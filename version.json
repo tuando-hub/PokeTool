@@ -1,6 +1,10 @@
 {
   "version": "1.0.5",
-  "changelog": "ChangeProfile & Otp mode
-   • Chỉ đổi thông tin nào ghi trên app
-   • Đổi sdt mới lấy OTP , còn không chỉ đổi thông tin bình thường"
+  "changelog": {
+    "title": "ChangeProfile & Otp mode",
+    "items": [
+      "Chỉ đổi thông tin nào ghi trên app",
+      "Đổi sdt mới lấy OTP, còn không chỉ đổi thông tin bình thường"
+    ]
+  }
 }
