@@ -1,12 +1,9 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "changelog": {
     "items": [
-      "Create mode",
-      "• Fix lại cho mượt hơn",
       "ChangeProfile & Otp mode",
-      "• Chỉ đổi thông tin nào ghi trên app",
-      "• Đổi sdt mới lấy OTP, còn không chỉ đổi thông tin bình thường"
+      "• Thêm đồng ý điều khoản"
     ]
   }
 }
