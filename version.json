@@ -1,9 +1,9 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "changelog": {
     "items": [
-      "ChangeProfile & Otp mode",
-      "• Sửa lại xoá session & cokkie"
+      "Check Result",
+      "• Thêm mode check mail kết quả "
     ]
   }
 }
