@@ -1,9 +1,9 @@
 {
-  "version": "1.0.9",
+  "version": "1.0.10",
   "changelog": {
     "items": [
-      "Check Result",
-      "• Thêm mode check mail kết quả "
+      "Buy Mode",
+      "• Thêm phương thức thanh toán Daibiki / Credit( Thanh toán Credit chưa xong )"
     ]
   }
 }
