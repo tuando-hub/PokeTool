@@ -1,9 +1,11 @@
 {
-  "version": "1.0.10",
+  "version": "1.0.11",
   "changelog": {
     "items": [
-      "Buy Mode",
-      "• Thêm phương thức thanh toán Daibiki / Credit( Thanh toán Credit chưa xong )"
+      "Lottery Mode",
+      "• Thêm check điều khoản",
+      " UI",
+      " Thêm chức năng import data "
     ]
   }
 }
