@@ -1,11 +1,9 @@
 {
-  "version": "1.0.13",
+  "version": "1.0.14",
   "changelog": {
     "items": [
       "👉 Lottery Mode",
-      "• Thêm check điều khoản",
-      "👉 UI",
-      "• Thêm chức năng import data "
+      "• Bỏ check điều khoản "
     ]
   }
 }
