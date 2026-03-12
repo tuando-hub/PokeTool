@@ -1,9 +1,10 @@
 {
-  "version": "1.0.14",
+  "version": "1.0.15",
   "changelog": {
     "items": [
-      "👉 Lottery Mode",
-      "• Bỏ check điều khoản "
+      "👉 Sửa mode Create & ChangeProfile",
+      "• Create : Mỗi acc 1 mã bưu điện",
+      "• ChangeProfile : Thêm check điều khoản"
     ]
   }
 }
