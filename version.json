@@ -1,10 +1,9 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.19",
   "changelog": {
     "items": [
-      "👉 Sửa mode Create & ChangeProfile",
-      "• Create : Mỗi acc 1 mã bưu điện",
-      "• ChangeProfile : Thêm check điều khoản"
+      "👉 Sửa mode CheckResult",
+      "• Cải thiện tốc độ check mail"
     ]
   }
 }
