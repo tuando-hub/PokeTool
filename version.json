@@ -1,9 +1,8 @@
 {
-  "version": "1.0.27",
+  "version": "1.0.28",
   "changelog": {
     "items": [
-      "👉 Sửa mode CheckResult",
-      "• Cải thiện tốc độ check mail"
+      "👉 Sửa lại lấy OTP không cần Pyto"
     ]
   }
 }
