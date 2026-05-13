@@ -1,8 +1,8 @@
 {
-  "version": "1.0.28",
+  "version": "1.0.29",
   "changelog": {
     "items": [
-      "👉 Sửa lại lấy OTP không cần Pyto"
+      "👉 Thêm mode ChangeEmail( Đổi mail )"
     ]
   }
 }
