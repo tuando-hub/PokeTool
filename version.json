@@ -1,8 +1,8 @@
 {
-  "version": "1.0.29",
+  "version": "1.0.30",
   "changelog": {
     "items": [
-      "👉 Thêm mode ChangeEmail( Đổi mail )"
+      "👉 Sửa lại thao tác bấm nút"
     ]
   }
 }
