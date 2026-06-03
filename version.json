@@ -1,8 +1,9 @@
 {
-  "version": "1.0.32",
+  "version": "1.0.33",
   "changelog": {
     "items": [
-      "👉 Sửa lại thao tác bấm nút"
+      "👉 Fix lại mode Create",
+      "👉 Fix lại một số lỗi nhỏ"
     ]
   }
 }
