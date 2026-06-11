@@ -1,9 +1,9 @@
 {
-  "version": "1.0.37",
+  "version": "1.0.38",
   "changelog": {
     "items": [
       "👉 Fix lại giao diện",
-      "👉 Fix lại mode Lottery nhanh hơn"
+      "👉 Fix lại mode Lottery, CheckResult"
     ]
   }
 }
