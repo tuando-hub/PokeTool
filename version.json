@@ -1,9 +1,8 @@
 {
-  "version": "1.0.40",
+  "version": "1.0.41",
   "changelog": {
     "items": [
-      "👉 Fix lại giao diện",
-      "👉 Fix lại mode Lottery, CheckResult"
+      "👉 Fix lại mode ChangeProfile"
     ]
   }
 }
