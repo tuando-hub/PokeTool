@@ -1,8 +1,8 @@
 {
-  "version": "1.0.42",
+  "version": "1.0.43",
   "changelog": {
     "items": [
-      "👉 Fix lại mode ChangeProfile"
+      "👉 Fix lại mode Lottery"
     ]
   }
 }
