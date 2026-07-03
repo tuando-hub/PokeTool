@@ -14,12 +14,21 @@ async function installLoginHook(wv) {
   await Web.evalJS(wv, `
 (() => {
   window.__LOGIN_RESULT = "";
+  try { localStorage.removeItem("__LOGIN_RESULT"); } catch(e) {}
 
   if (window.__LOGIN_HOOK_INSTALLED) {
     return "LOGIN_HOOK_ALREADY";
   }
 
   window.__LOGIN_HOOK_INSTALLED = true;
+
+  function save(item) {
+    try {
+      const s = JSON.stringify(item);
+      window.__LOGIN_RESULT = s;
+      localStorage.setItem("__LOGIN_RESULT", s);
+    } catch(e) {}
+  }
 
   const oldOpen = XMLHttpRequest.prototype.open;
   const oldSend = XMLHttpRequest.prototype.send;
@@ -36,7 +45,7 @@ async function installLoginHook(wv) {
 
       if (url.includes("accounts.login")) {
         this.addEventListener("load", function() {
-          window.__LOGIN_RESULT = JSON.stringify({
+          save({
             type: "XHR",
             method: this.__login_m,
             url: this.__login_u,
@@ -64,7 +73,7 @@ async function installLoginHook(wv) {
       if (url.includes("accounts.login")) {
         const text = await res.clone().text();
 
-        window.__LOGIN_RESULT = JSON.stringify({
+        save({
           type: "FETCH",
           method: opt.method || "GET",
           url,
@@ -107,7 +116,7 @@ async function clickLoginAndWait(wv, email, password, fill) {
     `);
   }
 
-  await Web.tapButton2(wv, "#form1Button", 5, 3000);
+  await Web.tapButton(wv, "#form1Button");
 
   const loginRaw = await Web.waitVar(wv, "__LOGIN_RESULT", 15000);
 
