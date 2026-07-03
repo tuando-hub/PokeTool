@@ -1,1 +1,79 @@
+name: Build PokeTool Release
 
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./app.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version.json
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
+          const data = {
+            version: app.version,
+            changelog: {
+              items: [
+                "Auto build release"
+              ]
+            }
+          };
+          fs.writeFileSync("version.json", JSON.stringify(data, null, 2));
+          NODE
+
+      - name: Commit version.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add version.json
+          git diff --cached --quiet || git commit -m "update version.json"
+
+      - name: Push version.json
+        run: git push
+
+      - name: Create zip
+        run: |
+          zip -r PokeTool.zip . \
+            -x ".git/*" \
+            -x ".github/*" \
+            -x "PokeTool.zip" \
+            -x "pending.json" \
+            -x "done.json" \
+            -x "failed.json" \
+            -x "log.json" \
+            -x "meta.json" \
+            -x "ui_state_last.json"
+
+      - name: Delete old release if exists
+        run: |
+          gh release delete v${{ steps.version.outputs.version }} -y || true
+          git push --delete origin v${{ steps.version.outputs.version }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release
+        run: |
+          gh release create v${{ steps.version.outputs.version }} \
+            PokeTool.zip \
+            --title "PokeTool v${{ steps.version.outputs.version }}" \
+            --notes "Auto release v${{ steps.version.outputs.version }}" \
+            --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
