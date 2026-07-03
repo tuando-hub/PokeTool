@@ -24,7 +24,7 @@ jobs:
           VERSION=$(node -p "require('./app.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      -       - name: Update version.json
+      - name: Update version.json
         run: |
           node - <<'NODE'
           const fs = require("fs");
