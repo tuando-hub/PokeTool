@@ -13,39 +13,33 @@ function checkStop(stopCheck) {
 async function installLoginHook(wv) {
   await Web.evalJS(wv, `
 (() => {
+  window.__LOGIN_RESULT = "";
 
-  window.__OTP_RESULT = "";
+  if (window.__LOGIN_HOOK_INSTALLED) {
+    return "LOGIN_HOOK_ALREADY";
+  }
 
-  if (window.__OTP_HOOK_INSTALLED)
-    return "ALREADY";
-
-  window.__OTP_HOOK_INSTALLED = true;
-
-  const cap = item => {
-    try {
-      window.__OTP_RESULT =
-        JSON.stringify(item);
-    } catch(e){}
-  };
+  window.__LOGIN_HOOK_INSTALLED = true;
 
   const oldOpen = XMLHttpRequest.prototype.open;
   const oldSend = XMLHttpRequest.prototype.send;
 
   XMLHttpRequest.prototype.open = function(method, url) {
-    this.__m = method;
-    this.__u = url || "";
+    this.__login_m = method;
+    this.__login_u = url || "";
     return oldOpen.apply(this, arguments);
   };
 
   XMLHttpRequest.prototype.send = function(body) {
     try {
-      const url = String(this.__u || "");
+      const url = String(this.__login_u || "");
 
       if (url.includes("accounts.login")) {
         this.addEventListener("load", function() {
           window.__LOGIN_RESULT = JSON.stringify({
-            method: this.__m,
-            url: this.__u,
+            type: "XHR",
+            method: this.__login_m,
+            url: this.__login_u,
             body: String(body || ""),
             status: this.status,
             response: this.responseText || ""
@@ -57,7 +51,34 @@ async function installLoginHook(wv) {
     return oldSend.apply(this, arguments);
   };
 
-  return "HOOK_OK";
+  const oldFetch = window.fetch;
+
+  window.fetch = async function() {
+    const args = arguments;
+    const url = String(args[0] || "");
+    const opt = args[1] || {};
+
+    const res = await oldFetch.apply(this, args);
+
+    try {
+      if (url.includes("accounts.login")) {
+        const text = await res.clone().text();
+
+        window.__LOGIN_RESULT = JSON.stringify({
+          type: "FETCH",
+          method: opt.method || "GET",
+          url,
+          body: String(opt.body || ""),
+          status: res.status,
+          response: text
+        });
+      }
+    } catch(e) {}
+
+    return res;
+  };
+
+  return "LOGIN_HOOK_OK";
 })();
   `);
 }
@@ -133,6 +154,8 @@ async function loginWithRetry(wv, email, password, maxRetry) {
       status: "Login try " + i
     });
 
+    await installLoginHook(wv);
+    
     const rs = await clickLoginAndWait(
       wv,
       email,
