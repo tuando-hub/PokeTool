@@ -62,10 +62,11 @@ async function installLoginHook(wv) {
   `);
 }
 
-async function clickLoginAndWait(wv, email, password) {
+async function clickLoginAndWait(wv, email, password, fill) {
   await Web.evalJS(wv, `window.__LOGIN_RESULT = "";`);
 
-  await Web.evalJS(wv, `
+  if (fill !== false) {
+    await Web.evalJS(wv, `
 (() => {
   const mail = document.querySelector("#login-form-email");
   const pass = document.querySelector("#current-password");
@@ -81,18 +82,11 @@ async function clickLoginAndWait(wv, email, password) {
     pass.dispatchEvent(new Event("input", { bubbles:true }));
     pass.dispatchEvent(new Event("change", { bubbles:true }));
   }
-
-  const btn = document.querySelector("#form1Button");
-
-  if (btn) {
-    btn.disabled = false;
-    btn.removeAttribute("disabled");
-    btn.click();
+})();
+    `);
   }
 
-  return true;
-})();
-  `);
+  await Web.tapButton2(wv, "#form1Button", 5, 3000);
 
   const loginRaw = await Web.waitVar(wv, "__LOGIN_RESULT", 15000);
 
@@ -139,7 +133,12 @@ async function loginWithRetry(wv, email, password, maxRetry) {
       status: "Login try " + i
     });
 
-    const rs = await clickLoginAndWait(wv, email, password);
+    const rs = await clickLoginAndWait(
+      wv,
+      email,
+      password,
+      i === 1
+    );
 
     if (rs.ok) return rs;
     if (rs.retry === false) return rs;
