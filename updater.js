@@ -68,11 +68,19 @@ function unzipFile(zipPath) {
       if ($file.exists(dest)) {
         $file.delete(dest);
       }
-    } catch (e) {}
+    } catch (e) {
+      //
+    }
+
+    try {
+      $file.mkdir(dest);
+    } catch (e) {
+      //
+    }
 
     $archiver.unzip({
-      file: zipPath,
-      dest,
+      path: zipPath,
+      dest: dest,
       handler(success) {
         if (!success) {
           reject("UNZIP_FAILED");
@@ -128,6 +136,14 @@ function findRootDir(tmpDir) {
   return tmpDir;
 }
 
+function reopenTool() {
+  try {
+    $app.openURL("jsbox://run?name=PokeTool");
+  } catch (e) {
+    console.log("REOPEN ERROR:", e.message || e);
+  }
+}
+
 async function doUpdate() {
   try {
     $ui.toast("Đang tải update...");
@@ -143,13 +159,24 @@ async function doUpdate() {
 
     copyDir(rootDir, "");
 
-    try { $file.delete(zipPath); } catch (e) {}
-    try { $file.delete(tmpDir); } catch (e) {}
+    try { $file.delete(zipPath); } catch (e) {
+      //
+    }
+    try { $file.delete(tmpDir); } catch (e) {
+      //
+    }
 
     $ui.alert({
       title: "✅ Update xong",
-      message: "Hãy thoát app và mở lại PokeTool.",
-      actions: ["OK"]
+      message: "Bấm OK để mở lại PokeTool.",
+      actions: [
+        {
+          title: "OK",
+          handler() {
+            reopenTool();
+          }
+        }
+      ]
     });
 
   } catch (e) {
