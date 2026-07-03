@@ -44,7 +44,7 @@ const TABS = [
 ];
 
 let state = {
-  version: "3.0.0",
+  version: getAppVersion(),
   mode: "Lottery",
   tab: "Dashboard",
   running: false,
@@ -157,6 +157,9 @@ let listeners = [];
 
 function init() {
   loadState();
+
+  state.tab = "Dashboard";
+
   refreshStats();
 }
 
@@ -203,6 +206,18 @@ function updateStats(patch) {
   state.stats = Object.assign({}, state.stats, patch || {});
   persist();
   emit();
+}
+
+function getAppVersion() {
+  try {
+    const f = $file.read("app.json");
+    if (!f || !f.string) return "0.0.0";
+
+    const json = JSON.parse(f.string);
+    return json.version || "0.0.0";
+  } catch (e) {
+    return "0.0.0";
+  }
 }
 
 function addLog(text, type) {
@@ -257,7 +272,9 @@ function loadState() {
 
   try {
     cache = $cache.get(CACHE_KEY);
-  } catch (e) {}
+  } catch (e) {
+    //
+  }
 
   let config = loadJSON(FILE_CONFIG, null);
 
@@ -282,6 +299,7 @@ function loadState() {
   if (Array.isArray(logs)) {
     state.logs = logs.slice(0, 200);
   }
+  state.version = getAppVersion();
 }
 
 function saveText(path, text) {
@@ -320,7 +338,9 @@ function deleteFile(path) {
     if ($drive.exists(path)) {
       $drive.delete(path);
     }
-  } catch (e) {}
+  } catch (e) {
+    //
+  }
 }
 
 function clearProgress() {
