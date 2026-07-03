@@ -1,6 +1,4 @@
 {
   "name": "PokeTool",
-  "version": "1.0.1",
-  "zip": "https://github.com/tuando-hub/PokeTool/releases/latest/download/PokeTool.zip",
-  "force_update": true
+  "version": "2.0.1"
 }
