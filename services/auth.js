@@ -13,10 +13,20 @@ function checkStop(stopCheck) {
 async function installLoginHook(wv) {
   await Web.evalJS(wv, `
 (() => {
-  window.__LOGIN_RESULT = "";
 
-  if (window.__LOGIN_HOOK_INSTALLED) return "ALREADY";
-  window.__LOGIN_HOOK_INSTALLED = true;
+  window.__OTP_RESULT = "";
+
+  if (window.__OTP_HOOK_INSTALLED)
+    return "ALREADY";
+
+  window.__OTP_HOOK_INSTALLED = true;
+
+  const cap = item => {
+    try {
+      window.__OTP_RESULT =
+        JSON.stringify(item);
+    } catch(e){}
+  };
 
   const oldOpen = XMLHttpRequest.prototype.open;
   const oldSend = XMLHttpRequest.prototype.send;
@@ -235,13 +245,25 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
     if (raw) {
       try {
         const cap = JSON.parse(raw);
-        const json = JSON.parse(cap.response || "{}");
+        
+        if (
+          !String(cap.body || "")
+            .includes(currentOtp)
+        ) {
+          Core.addLog(
+            "Ignore old OTP response",
+            "warn"
+          );
+          continue;
+        }
+        
+        const json =
+          JSON.parse(cap.response || "{}");
 
         if (
           cap.status === 200 &&
           (
             json.success === true ||
-            json.loggedin === true ||
             String(cap.response || "").includes('"success": true') ||
             String(cap.response || "").includes('"success":true')
           )
@@ -253,7 +275,7 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
         }
 
         Core.addLog(
-          "OTP response NG: " + (cap.response || "").slice(0, 120),
+          "OTP Fail ",
           "warn"
         );
 
@@ -417,25 +439,26 @@ async function loginOtpTerms(ctx) {
   }
 
   await Web.showNotify(wv, "OTP: " + otp, 2500);
-
-  await Web.evalJS(wv, `
-(() => {
-  const el = document.querySelector("#authCode");
-
-  if (el) {
-    el.value = "";
-    el.dispatchEvent(new Event("input", { bubbles:true }));
-
-    el.value = ${JSON.stringify(otp)};
-    el.dispatchEvent(new Event("input", { bubbles:true }));
-    el.dispatchEvent(new Event("change", { bubbles:true }));
-  }
-})();
-  `);
-
+  
   await installOtpHook(wv);
-
+  
   await Web.evalJS(wv, `window.__OTP_RESULT = "";`);
+  
+  await Web.evalJS(wv, `
+  (() => {
+    const el = document.querySelector("#authCode");
+  
+    if (el) {
+      el.value = "";
+      el.dispatchEvent(new Event("input", { bubbles:true }));
+  
+      el.value = ${JSON.stringify(otp)};
+      el.dispatchEvent(new Event("input", { bubbles:true }));
+      el.dispatchEvent(new Event("change", { bubbles:true }));
+    }
+  })();
+  `);
+  
   await Web.delay(500);
 
   const otpOk = await verifyOtp(
