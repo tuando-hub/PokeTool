@@ -24,20 +24,29 @@ jobs:
           VERSION=$(node -p "require('./app.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Update version.json
+      -       - name: Update version.json
         run: |
           node - <<'NODE'
           const fs = require("fs");
-          const app = JSON.parse(fs.readFileSync("app.json", "utf8"));
-          const data = {
-            version: app.version,
-            changelog: {
-              items: [
-                "Auto build release"
-              ]
-            }
-          };
-          fs.writeFileSync("version.json", JSON.stringify(data, null, 2));
+
+          const app = JSON.parse(
+            fs.readFileSync("app.json", "utf8")
+          );
+
+          let data = {};
+
+          if (fs.existsSync("version.json")) {
+            data = JSON.parse(
+              fs.readFileSync("version.json", "utf8")
+            );
+          }
+
+          data.version = app.version;
+
+          fs.writeFileSync(
+            "version.json",
+            JSON.stringify(data, null, 2)
+          );
           NODE
 
       - name: Commit version.json
