@@ -300,6 +300,47 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
   return false;
 }
 
+async function getFinalJson(wv) {
+  const id = "__FINAL_JSON_" + Date.now();
+
+  await Web.evalJS(wv, `
+(() => {
+  window.${id} = "";
+
+  try {
+    if (!window.gigya || !gigya.accounts || !gigya.accounts.getAccountInfo) {
+      window.${id} = JSON.stringify({
+        errorCode: -1,
+        reason: "NO_GIGYA"
+      });
+      return;
+    }
+
+    gigya.accounts.getAccountInfo({
+      callback: function(res) {
+        window.${id} = JSON.stringify(res || {});
+      }
+    });
+  } catch(e) {
+    window.${id} = JSON.stringify({
+      errorCode: -2,
+      reason: String(e.message || e)
+    });
+  }
+})();
+  `);
+
+  const raw = await Web.waitVar(wv, id, 30000);
+
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch(e) {
+    return {};
+  }
+}
+
 async function loginOtpTerms(ctx) {
   const wv = ctx.wv;
   const email = ctx.email;
@@ -439,9 +480,17 @@ async function loginOtpTerms(ctx) {
     await Web.showNotify(wv, "Accepting terms...", 2500);
     await Web.acceptTermsIfNeeded(wv);
   }
+  
+  const finalJson = await getFinalJson(wv);
+  
+  Core.addLog(
+    "FinalJson UID: " + (finalJson.UID || "-"),
+    finalJson.UID ? "success" : "warn"
+  );
 
   return {
-    ok: true
+    ok: true,
+    finalJson
   };
 }
 
@@ -451,5 +500,6 @@ module.exports = {
   loginWithRetry,
   installOtpHook,
   verifyOtp,
+  getFinalJson,
   loginOtpTerms
 };

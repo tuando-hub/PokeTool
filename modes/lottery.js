@@ -281,24 +281,6 @@ async function applyLotteryViaWebview(wv, lotteryGroupId, itemPrizeId, token) {
   };
 }
 
-function playSuccessSound() {
-  try {
-    $device.taptic(2);
-  } catch(e) {
-    //
-  }
-
-  try {
-    if (!$file.exists("success.mp3")) return;
-
-    $audio.play({
-      path: "success.mp3"
-    });
-  } catch(e) {
-    //
-  }
-}
-
 async function runAccount(ctx) {
   const acc = ctx.acc;
   const index = ctx.index;
@@ -469,7 +451,7 @@ async function runAccount(ctx) {
       
         if (applyResult.success) {
           Core.addLog("Apply OK: " + found.itemName, "success");
-          playSuccessSound();
+          Core.playSuccessSound();
           await Web.showNotify(wv, "✅ " + found.itemName, 3000);
         } else {
           Core.addLog(

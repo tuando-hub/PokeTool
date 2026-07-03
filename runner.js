@@ -4,6 +4,7 @@ const Core = require("./core");
 const Web = require("./web");
 const Lottery = require("./modes/lottery");
 const CheckResult = require("./modes/checkresult");
+const ChangeProfileOrder = require("./modes/changeprofileorder");
 
 const LOGIN_URL = "https://www.pokemoncenter-online.com/login/";
 
@@ -113,6 +114,16 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
+  
+  if (mode === "ChangeProfileOrder") {
+    return await ChangeProfileOrder.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
+  }
 
   throw new Error("MODE_NOT_IMPLEMENTED_" + mode);
 }
@@ -144,7 +155,8 @@ function validateBeforeRun() {
   if (
     mode === "Lottery" ||
     mode === "Buy" ||
-    mode === "CheckResult"
+    mode === "CheckResult" ||
+    mode === "ChangeProfileOrder"
   ) {
     if (!productIds) errors.push("Thiếu PRODUCT IDS");
   }
@@ -180,11 +192,19 @@ function validateBeforeRun() {
     mode === "ChangeProfile" ||
     mode === "ChangeProfileOrder"
   ) {
-    if (!String(f.phones || "").trim()) errors.push("Thiếu PHONES");
-    if (!String(f.postcode || "").trim()) errors.push("Thiếu POSTCODE");
-    if (!String(f.pref || "").trim()) errors.push("Thiếu PREF");
-    if (!String(f.address1 || "").trim()) errors.push("Thiếu CITY");
-    if (!String(f.address2 || "").trim()) errors.push("Thiếu ADDRESS");
+    const hasAnyProfile =
+      String(f.names || "").trim() ||
+      String(f.kanas || "").trim() ||
+      String(f.phones || "").trim() ||
+      String(f.postcode || "").trim() ||
+      String(f.pref || "").trim() ||
+      String(f.address1 || "").trim() ||
+      String(f.address2 || "").trim() ||
+      String(f.birthdate || "").trim();
+  
+    if (!hasAnyProfile) {
+      errors.push("Thiếu dữ liệu cần đổi");
+    }
   }
 
   if (mode === "ChangeEmail") {

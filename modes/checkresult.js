@@ -309,6 +309,7 @@ async function detectLotteryResult(wv, productId) {
   const title = item.querySelector(".ttl")?.innerText?.trim() || "";
 
   if (status.includes("当選")) return { result: "WIN", title, status };
+  Core.playSuccessSound();
   if (status.includes("落選")) return { result: "LOST", title, status };
   if (status.includes("応募中")) return { result: "WAIT", title, status };
 

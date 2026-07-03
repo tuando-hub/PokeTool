@@ -1530,7 +1530,8 @@ function getModeSections(mode) {
     product:
       mode === "Lottery" ||
       mode === "Buy" ||
-      mode === "CheckResult",
+      mode === "CheckResult" ||
+      mode === "ChangeProfileOrder",
     profile:
       mode === "Create" ||
       mode === "ChangeProfile" ||

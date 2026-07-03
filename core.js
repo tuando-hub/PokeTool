@@ -132,13 +132,15 @@ const MODE_FIELDS = {
   ],
 
   ChangeProfileOrder: [
+    "productIds",
     "names",
     "kanas",
     "phones",
     "postcode",
     "pref",
     "address1",
-    "address2"
+    "address2",
+    "birthdate"
   ],
 
   ChangeEmail: [
@@ -521,6 +523,28 @@ function saveQueueFromForm(form, mode) {
   return tasks.length;
 }
 
+function playSuccessSound() {
+  try {
+    $device.taptic(2);
+  } catch (e) {
+    //
+  }
+
+  try {
+    if (!$file.exists("success.mp3")) {
+      console.log("NO SOUND FILE");
+      return;
+    }
+
+    $audio.play({
+      path: "success.mp3"
+    });
+
+  } catch (e) {
+    console.log("SOUND ERR", e);
+  }
+}
+
 function resetAll() {
   try {
     $cache.remove(CACHE_KEY);
@@ -603,5 +627,6 @@ module.exports = {
   saveQueueFromForm,
   lines,
   pickLine,
-  saveQueueFromMailList
+  saveQueueFromMailList,
+  playSuccessSound
 };
