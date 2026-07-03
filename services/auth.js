@@ -482,11 +482,6 @@ async function loginOtpTerms(ctx) {
   }
   
   const finalJson = await getFinalJson(wv);
-  
-  Core.addLog(
-    "FinalJson UID: " + (finalJson.UID || "-"),
-    finalJson.UID ? "success" : "warn"
-  );
 
   return {
     ok: true,

@@ -31,7 +31,6 @@ function pickDate() {
   return new Promise(resolve => {
     const CHECKERS = ["Tuấn", "Hào", "Hoàng"];
     let selectedChecker = null;
-    let selectedLimit = 1;
 
     $ui.push({
       props: { title: "📅 Chọn ngày check mail" },
@@ -76,34 +75,6 @@ function pickDate() {
         {
           type: "button",
           props: {
-            id: "limitBtn",
-            title: "📦 Số mail check: 1",
-            bgcolor: $color("#111827"),
-            titleColor: $color("white"),
-            radius: 12
-          },
-          layout: make => {
-            make.top.equalTo($("checkerBtn").bottom).offset(12);
-            make.left.right.inset(20);
-            make.height.equalTo(50);
-          },
-          events: {
-            tapped() {
-              $ui.menu({
-                title: "📦 Chọn số mail",
-                items: ["1", "2", "3", "4", "5"],
-                handler(v) {
-                  if (!v) return;
-                  selectedLimit = Number(v);
-                  $("limitBtn").title = "📦 Số mail check: " + v;
-                }
-              });
-            }
-          }
-        },
-        {
-          type: "button",
-          props: {
             title: "✅ Xác nhận",
             bgcolor: $color("#22C55E"),
             titleColor: $color("white"),
@@ -126,8 +97,7 @@ function pickDate() {
 
               resolve({
                 date: formatImapDate(d),
-                checker: selectedChecker,
-                limit: selectedLimit
+                checker: selectedChecker
               });
             }
           }
@@ -137,7 +107,7 @@ function pickDate() {
   });
 }
 
-function callNodeCheckMail({ imapEmail, imapPass, mails, date, checker, limit }) {
+function callNodeCheckMail({ imapEmail, imapPass, mails, date, checker, productId }) {
   return new Promise(resolve => {
     const eventId = "CHECKMAIL_" + Date.now();
 
@@ -153,7 +123,12 @@ function callNodeCheckMail({ imapEmail, imapPass, mails, date, checker, limit })
         "",
         eventId,
         "CheckMail",
-        JSON.stringify({ mails, date, checker, limit })
+        JSON.stringify({
+          mails,
+          date,
+          checker,
+          productId
+        })
       ]
     });
   });
@@ -191,12 +166,26 @@ async function runCheckMail(ctx) {
   }
 
   const opt = await pickDate();
-
+  
+  const mails = accounts.map(a => a.email).filter(Boolean);
+  
+  const productId = String(
+    firstTask.productIds || form.productIds || ""
+  )
+    .split(/[,，\n\r\s]+/)
+    .map(x => x.trim())
+    .filter(Boolean)[0] || "";
+  
+  if (!productId) {
+    $ui.alert("Thiếu PRODUCT IDS");
+    return;
+  }
+  
   Core.addLog(
-    "CheckMail: " + opt.date + " / " + opt.checker + " / limit " + opt.limit,
+    "CheckMail: " + opt.date + " / " + opt.checker + " / product " + productId,
     "info"
   );
-
+  
   Core.updateCurrent({
     email: "-",
     step: "CHECKMAIL",
@@ -205,15 +194,13 @@ async function runCheckMail(ctx) {
     total: accounts.length
   });
 
-  const mails = accounts.map(a => a.email).filter(Boolean);
-
   const rs = await callNodeCheckMail({
     imapEmail,
     imapPass,
     mails,
     date: opt.date,
     checker: opt.checker,
-    limit: opt.limit
+    productId
   });
 
   if (!rs.ok) {
@@ -287,33 +274,77 @@ async function runCheckMail(ctx) {
   );
 }
 
-async function detectLotteryResult(wv, productId) {
+async function detectLotteryResults(wv, productIds) {
   return await Web.evalJS(wv, `
 (() => {
+  const productIds = ${JSON.stringify(productIds || [])};
+
   const items = [...document.querySelectorAll(".comOrderList li")];
 
-  if (!items.length) return { result: "NO_HISTORY" };
-
-  let item = items[0];
-
-  if (${JSON.stringify(productId || "")}) {
-    item = items.find(x => {
-      const img = x.querySelector("img")?.src || "";
-      return img.includes("/" + ${JSON.stringify(productId || "")} + "/");
-    });
-
-    if (!item) return { result: "NOT_FOUND" };
+  if (!items.length) {
+    return productIds.map(id => ({
+      productId: id,
+      result: "NO_HISTORY"
+    }));
   }
 
-  const status = item.querySelector(".txtBox01 p")?.innerText?.trim() || "";
-  const title = item.querySelector(".ttl")?.innerText?.trim() || "";
+  return productIds.map(id => {
+    const item = items.find(x => {
+      const img = x.querySelector("img")?.src || "";
+      return img.includes("/" + id + "/");
+    });
 
-  if (status.includes("当選")) return { result: "WIN", title, status };
-  Core.playSuccessSound();
-  if (status.includes("落選")) return { result: "LOST", title, status };
-  if (status.includes("応募中")) return { result: "WAIT", title, status };
+    if (!item) {
+      return {
+        productId: id,
+        result: "NO_HISTORY"
+      };
+    }
 
-  return { result: "UNKNOWN", title, status };
+    const status =
+      item.querySelector(".txtBox01 p")
+        ?.innerText
+        ?.trim() || "";
+
+    const title =
+      item.querySelector(".ttl")
+        ?.innerText
+        ?.trim() || "";
+
+    if (status.includes("当選")) {
+      return {
+        productId: id,
+        result: "WIN",
+        title,
+        status
+      };
+    }
+
+    if (status.includes("落選")) {
+      return {
+        productId: id,
+        result: "LOST",
+        title,
+        status
+      };
+    }
+
+    if (status.includes("応募中")) {
+      return {
+        productId: id,
+        result: "WAIT",
+        title,
+        status
+      };
+    }
+
+    return {
+      productId: id,
+      result: "UNKNOWN",
+      title,
+      status
+    };
+  });
 })();
   `);
 }
@@ -329,11 +360,16 @@ async function runCheckAccOne(acc, index, total, form, stopCheck) {
   });
   
   const productIds = String(runForm.productIds || "")
-    .split(",")
+    .split(/[,，\n\r\s]+/)
     .map(x => x.trim())
     .filter(Boolean);
   
-  const productId = productIds[0] || "";
+  if (!productIds.length) {
+    return {
+      ok: false,
+      reason: "NO_PRODUCT_IDS"
+    };
+  }
 
   let wv = null;
 
@@ -387,37 +423,38 @@ async function runCheckAccOne(acc, index, total, form, stopCheck) {
     await Web.waitPageReady(wv, 30000);
     await Web.delay(3000);
 
-    const rs = await detectLotteryResult(wv, productId);
-
+    const results = await detectLotteryResults(wv, productIds);
+    
+    const winList = results.filter(x => x.result === "WIN");
+    const failList = results.filter(x => x.result !== "WIN");
+    
+    if (winList.length > 0) {
+      Core.playSuccessSound();
+    }
+    
     Core.addLog(
       "CheckAcc: " +
         email +
-        " / " +
-        rs.result +
-        (rs.title ? " / " + rs.title : ""),
-      rs.result === "WIN"
-        ? "success"
-        : rs.result === "LOST"
-        ? "error"
-        : "warn"
+        " / WIN " +
+        winList.length +
+        " / OTHER " +
+        failList.length,
+      winList.length ? "success" : "warn"
     );
-
-    if (rs.result === "WIN") {
+    
+    if (winList.length > 0) {
       return {
         ok: true,
         reason: "WIN",
-        result: "WIN",
-        title: rs.title || "",
-        status: rs.status || ""
+        results,
+        winList
       };
     }
-
+    
     return {
       ok: false,
-      reason: rs.result || "CHECK_ACC_FAIL",
-      result: rs.result || "UNKNOWN",
-      title: rs.title || "",
-      status: rs.status || ""
+      reason: failList[0]?.result || "CHECK_ACC_FAIL",
+      results
     };
 
   } finally {
@@ -461,23 +498,55 @@ async function runCheckAcc(ctx) {
     accounts.shift();
 
     if (rs.ok) {
-      done.push({
-        email: acc.email,
-        pass: acc.pass,
-        text: `${acc.email}:${acc.pass}`,
-        result: "WIN",
-        doneAt: Date.now(),
-        meta: rs
+      (rs.winList || []).forEach(w => {
+        done.push({
+          email: acc.email,
+          pass: acc.pass,
+          productId: w.productId,
+          text: `${acc.email}:${acc.pass}\t${w.productId}\tWIN`,
+          result: "WIN",
+          doneAt: Date.now(),
+          meta: w
+        });
       });
+    
+      const others = (rs.results || []).filter(x => x.result !== "WIN");
+    
+      others.forEach(x => {
+        failed.push({
+          email: acc.email,
+          pass: acc.pass,
+          productId: x.productId,
+          text: `${acc.email}:${acc.pass}\t${x.productId}\t${x.result}`,
+          reason: x.result,
+          failedAt: Date.now(),
+          meta: x
+        });
+      });
+    
     } else {
-      failed.push({
-        email: acc.email,
-        pass: acc.pass,
-        text: `${acc.email}:${acc.pass}\t${rs.reason || "LOST"}`,
-        reason: rs.reason || "LOST",
-        failedAt: Date.now(),
-        meta: rs
+      (rs.results || []).forEach(x => {
+        failed.push({
+          email: acc.email,
+          pass: acc.pass,
+          productId: x.productId,
+          text: `${acc.email}:${acc.pass}\t${x.productId}\t${x.result || rs.reason || "UNKNOWN"}`,
+          reason: x.result || rs.reason || "UNKNOWN",
+          failedAt: Date.now(),
+          meta: x
+        });
       });
+    
+      if (!rs.results || !rs.results.length) {
+        failed.push({
+          email: acc.email,
+          pass: acc.pass,
+          text: `${acc.email}:${acc.pass}\t\t${rs.reason || "UNKNOWN"}`,
+          reason: rs.reason || "UNKNOWN",
+          failedAt: Date.now(),
+          meta: rs
+        });
+      }
     }
 
     Core.saveJSON(Core.FILE_PENDING, accounts);
@@ -493,11 +562,34 @@ async function runCheckAcc(ctx) {
     index: total,
     total
   });
+  
+  const stat = {
+    WIN: 0,
+    LOST: 0,
+    WAIT: 0,
+    NO_HISTORY: 0,
+    UNKNOWN: 0
+  };
+  
+  done.forEach(() => stat.WIN++);
+  
+  failed.forEach(x => {
+    const k = x.reason || "UNKNOWN";
+  
+    if (stat[k] == null) {
+      stat.UNKNOWN++;
+    } else {
+      stat[k]++;
+    }
+  });
 
   $ui.alert(
-    "🎉 CheckAcc xong\n" +
-    "🏆 Win: " + done.length + "\n" +
-    "❌ Lost/Wait/NotFound: " + failed.length
+    "🎉 CheckAcc xong\n\n" +
+    "🏆 WIN: " + stat.WIN + "\n" +
+    "❌ LOST: " + stat.LOST + "\n" +
+    "⏳ WAIT: " + stat.WAIT + "\n" +
+    "📜 NO_HISTORY: " + stat.NO_HISTORY + "\n" +
+    "❓ UNKNOWN: " + stat.UNKNOWN
   );
 }
 
