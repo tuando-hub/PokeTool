@@ -485,6 +485,7 @@ async function runCheckAcc(ctx) {
     const acc = accounts[0];
     const index = total - accounts.length + 1;
 
+    Core.addLog("*********************", "info");
     Core.addLog("Start check acc: " + acc.email, "info");
 
     const rs = await runCheckAccOne(

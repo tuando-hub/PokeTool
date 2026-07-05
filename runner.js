@@ -6,6 +6,7 @@ const Lottery = require("./modes/lottery");
 const CheckResult = require("./modes/checkresult");
 const ChangeProfileOrder = require("./modes/changeprofileorder");
 const Create = require("./modes/create");
+const ChangeEmail = require("./modes/changeemail");
 
 
 let STOP_FLAG = false;
@@ -104,6 +105,16 @@ async function runOneAccount(acc, index, total) {
   
   if (mode === "Create") {
     return await Create.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
+  }
+  
+  if (mode === "ChangeEmail") {
+    return await ChangeEmail.runAccount({
       acc,
       index,
       total,
@@ -232,7 +243,6 @@ async function run() {
   START_TIME = Date.now();
 
   Core.setRunning(true);
-  Core.addLog("**********************", "info");
   Core.addLog("Runner started", "success");
 
   try {
@@ -264,6 +274,7 @@ async function run() {
       const index = total - pending.length + 1;
 
       try {
+        Core.addLog("************************", "info");
         Core.addLog("Start account: " + acc.email, "info");
 
         const result = await runOneAccount(acc, index, total);

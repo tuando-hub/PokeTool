@@ -10,7 +10,6 @@ const TAB_H = 70;
 //const STATUS_H = 34;
 const CARD_X = 12;
 const CARD_W = sw - CARD_X * 2;
-let WEB_CREATED = false;
 let WEB_URL = "about:blank";
 let g_importData = null;
 
@@ -216,7 +215,6 @@ function dashboardPage() {
 
 function headerCard(top) {
   const logoSize = 54;
-  const modeW = sw < 390 ? 160 : 180;
   const titleLeft = 18 + logoSize + 12;
 
   return card("headerCard", top, 88, [
@@ -694,7 +692,6 @@ function dataPageHeight() {
 }
 
 function createWebView(url) {
-  WEB_CREATED = true;
   WEB_URL = url || "about:blank";
 
   const host = $("webHost");
@@ -705,7 +702,9 @@ function createWebView(url) {
 
   const old = $("mainWebView");
   if (old) {
-    try { old.remove(); } catch (e) {}
+    try { old.remove(); } catch (e) {
+      //
+    }
   }
 
   host.add({
@@ -743,7 +742,9 @@ function createWebView(url) {
           ) {
             sender._pageReady = true;
           }
-        } catch (e) {}
+        } catch (e) {
+          //
+        }
       },
     
       didFail(sender, error) {
@@ -758,15 +759,16 @@ function createWebView(url) {
 }
 
 function destroyWebView() {
-  WEB_CREATED = false;
   WEB_URL = "about:blank";
 
   const wv = $("mainWebView");
   if (wv) {
-    try { wv.remove(); } catch (e) {}
+    try { wv.remove(); } catch (e) {
+      //
+    }
   }
 
-  Core.addLog("WebView destroyed", "warn");
+  Core.addLog("WebView Closed", "warn");
 }
 
 function reloadWebView(url) {
@@ -785,31 +787,6 @@ function reloadWebView(url) {
 
 function getWebView() {
   return $("mainWebView");
-}
-
-function webViewBlock() {
-  return {
-    type: "web",
-    props: {
-      id: "mainWebView",
-      url: WEB_URL || "about:blank"
-    },
-    layout: make => {
-      make.top.left.right.bottom.equalTo(0);
-    },
-    events: {
-      didStart(sender) {
-        Core.addLog("WebView loading", "info");
-      },
-      didFinish(sender) {
-        WEB_URL = sender.url || WEB_URL;
-        Core.addLog("WebView loaded: " + WEB_URL, "success");
-      },
-      didFail(sender, error) {
-        Core.addLog("WebView error: " + String(error), "error");
-      }
-    }
-  };
 }
 
 function emptyBrowserBlock() {
