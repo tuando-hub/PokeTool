@@ -5,26 +5,11 @@ const Web = require("./web");
 const Lottery = require("./modes/lottery");
 const CheckResult = require("./modes/checkresult");
 const ChangeProfileOrder = require("./modes/changeprofileorder");
+const Create = require("./modes/create");
 
-const LOGIN_URL = "https://www.pokemoncenter-online.com/login/";
 
 let STOP_FLAG = false;
 let START_TIME = 0;
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function sleep(ms) {
-  const step = 200;
-  let passed = 0;
-
-  while (passed < ms) {
-    checkStop();
-    await delay(step);
-    passed += step;
-  }
-}
 
 function checkStop() {
   if (STOP_FLAG) {
@@ -63,30 +48,22 @@ function pushDone(acc, meta) {
   Core.refreshStats();
 }
 
-function pushFailed(acc, error) {
+function pushFailed(acc, error, meta) {
   const list = Core.loadJSON(Core.FILE_FAILED, []);
+  const reason = String(error || "Unknown error");
 
   list.push({
     email: acc.email,
     pass: acc.pass,
-    text: `${acc.email}:${acc.pass}\t${String(error || "Unknown error")}`,
-    reason: String(error || "Unknown error"),
-    failedAt: Date.now()
+    text: `${acc.email}:${acc.pass}\t${reason}`,
+    reason,
+    failedAt: Date.now(),
+    meta: meta || {},
+    data: meta && meta.data ? meta.data : acc.data
   });
 
   Core.saveJSON(Core.FILE_FAILED, list);
   Core.refreshStats();
-}
-
-function updateCurrent(acc, index, total, step, status) {
-  Core.updateCurrent({
-    email: acc && acc.email ? acc.email : "-",
-    step: step || "-",
-    status: status || "-",
-    index,
-    total,
-    elapsed: elapsedText()
-  });
 }
 
 async function runOneAccount(acc, index, total) {
@@ -117,6 +94,16 @@ async function runOneAccount(acc, index, total) {
   
   if (mode === "ChangeProfileOrder") {
     return await ChangeProfileOrder.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
+  }
+  
+  if (mode === "Create") {
+    return await Create.runAccount({
       acc,
       index,
       total,
@@ -245,6 +232,7 @@ async function run() {
   START_TIME = Date.now();
 
   Core.setRunning(true);
+  Core.addLog("**********************", "info");
   Core.addLog("Runner started", "success");
 
   try {
@@ -289,7 +277,7 @@ async function run() {
         savePending(pending);
 
         if (result && result.ok === false) {
-          pushFailed(acc, result.reason || "UNKNOWN_ERROR");
+          pushFailed(acc, result.reason || "UNKNOWN_ERROR", result);
         
           Core.addLog(
             "Failed: " + acc.email + " / " + (result.reason || "UNKNOWN_ERROR"),
@@ -308,7 +296,9 @@ async function run() {
         pending.shift();
         savePending(pending);
 
-        pushFailed(acc, e.message || e);
+        pushFailed(acc, e.message || e, {
+          data: acc.data
+        });
 
         Core.addLog(
           "Failed: " + acc.email + " / " + (e.message || e),

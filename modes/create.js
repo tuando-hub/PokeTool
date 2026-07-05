@@ -1,367 +1,561 @@
-// =======================================================
-// CREATE MODE — Auto Create Accounts (JSBox)
-// FAST FILL VERSION (NO LOGIC CUT)
-// =======================================================
+const Core = require("../core");
+const Web = require("../web");
+const OTP = require("../otp");
+const Session = require("../services/session");
+const FormFill = require("../services/formfill");
 
 const LOGIN_URL = "https://www.pokemoncenter-online.com/login/";
+const HOME_URL = "https://www.pokemoncenter-online.com/";
 
-// ===== SPEED CONFIG =====
-const DELAY_EMAIL_STEP   = 200;   // email input
-const DELAY_FILL_DONE    = 300;   // sau fill all
-const POLL_LINK_INTERVAL = 2000;
-const POLL_LINK_TIMEOUT  = 300000;
-
-let IMAP_EMAIL = "";
-let IMAP_PASS  = "";
-let STOP_FLAG  = false;
-
-// =======================================================
-// UTILS
-// =======================================================
-const delay = ms => new Promise(r => setTimeout(r, ms));
-
-function parseMailPass(list) {
-  return (list || [])
-    .map(l => l.trim())
-    .filter(Boolean)
-    .map(l => {
-      const [email, pass] = l.split(":");
-      if (!email || !pass) return null;
-      return { email: email.trim(), pass: pass.trim() };
-    })
-    .filter(Boolean);
+function checkStop(stopCheck) {
+  if (typeof stopCheck === "function") stopCheck();
 }
 
-// =======================================================
-// FILE STATE (ANTI DUP)
-// =======================================================
-function savePending(list) {
-  $drive.write({
-    path: "pending.json",
-    data: $data({ string: JSON.stringify(list, null, 2) })
-  });
+function getLine(v, index) {
+  return String(v || "")
+    .split(/\r?\n/)
+    .map(x => x.trim())[index] || "";
 }
 
-function loadPending() {
-  if (!$drive.exists("pending.json")) return [];
-  try {
-    return JSON.parse($drive.read("pending.json").string);
-  } catch {
-    return [];
-  }
+function getRunData(form, acc, index) {
+  if (acc.data) return acc.data;
+
+  const i = Math.max(0, index - 1);
+
+  return {
+    name: acc.name || getLine(form.names, i),
+    kana: acc.kana || getLine(form.kanas, i),
+    phone: acc.phone || getLine(form.phones, i),
+    postcode: acc.postcode || getLine(form.postcode, i),
+    pref: acc.pref || getLine(form.pref, i),
+    city: acc.address1 || acc.city || getLine(form.address1, i),
+    address2: acc.address2 || getLine(form.address2, i),
+    birthdate: acc.birthdate || getLine(form.birthdate, i)
+  };
 }
 
-function removeFromPending(acc) {
-  const list = loadPending().filter(a => a.email !== acc.email);
-  savePending(list);
-}
-
-function saveDone(acc) {
-  let list = [];
-  if ($drive.exists("done.json")) {
-    try { list = JSON.parse($drive.read("done.json").string); } catch {}
-  }
-  list.push(acc);
-  $drive.write({
-    path: "done.json",
-    data: $data({ string: JSON.stringify(list, null, 2) })
-  });
-}
-
-// =======================================================
-// WEBVIEW
-// =======================================================
-async function createWebView(title) {
-  return new Promise(resolve => {
-    $ui.push({
-      props: { title },
-      views: [{
-        type: "web",
-        props: { id: "wv", url: "about:blank" },
-        layout: $layout.fill,
-        events: { didFinish: s => s._ready = true }
-      }],
-      events: { appeared: () => resolve($("wv")) }
-    });
-  });
-}
-
-async function waitPageReady(wv, timeout = 20000) {
+async function waitCreateConfirmPage(wv, timeout = 5000) {
   const start = Date.now();
-  wv._ready = false;
-  while (!wv._ready) {
-    if (STOP_FLAG) return false;
-    if (Date.now() - start > timeout) return true;
-    await delay(50);
+
+  while (Date.now() - start < timeout) {
+    const ok = await Web.evalJS(wv, `
+      !!document.querySelector("#send-confirmation-email") ||
+      document.title.includes("メールアドレス確認") ||
+      document.body.innerText.includes("メールアドレス確認")
+    `);
+
+    if (ok) return true;
+    await Web.delay(300);
   }
-  return true;
+
+  return false;
 }
 
-async function clearSession(wv) {
-  try {
-    wv.url = "https://www.pokemoncenter-online.com/logout/";
-    await delay(800);
-    await wv.eval({
-      script: `
-        try{
-          document.cookie.split(";").forEach(c=>{
-            document.cookie=c.replace(/=.*/,"=;expires="+new Date(0).toUTCString()+";path=/");
-          });
-          localStorage.clear();
-          sessionStorage.clear();
-        }catch(e){}
-      `
-    });
-  } catch {}
-}
+async function submitAndSendConfirmationEmail(wv, email) {
+  Core.addLog("Request create mail", "info");
 
-// =======================================================
-// PYTO — GET CREATE LINK (MARK SEEN + DELETE)
-// =======================================================
-async function callPytoGetCreateLink(targetMail) {
-  const server = IMAP_EMAIL.endsWith("@gmail.com")
-    ? "imap.gmail.com"
-    : "imap.mail.me.com";
+  await Web.evalJS(wv, `
+(function(){
+  window.__REQ_STATE = "RUNNING";
 
-  const code = `
-import imaplib,email,re,time,pasteboard,webbrowser
+  const emailEl = document.querySelector("#login-form-regist-email");
+  const csrfEl = document.querySelector('input[name="csrf_token"]');
 
-EMAIL="${IMAP_EMAIL}"
-PASS="${IMAP_PASS}"
-SERVER="${server}"
-TARGET="${targetMail}"
-
-def fetch():
-  imap=None
-  try:
-    imap=imaplib.IMAP4_SSL(SERVER)
-    imap.login(EMAIL,PASS)
-    imap.select("INBOX")
-
-    _,to_ids=imap.search(None,f'TO "{TARGET}"')
-    _,unseen=imap.search(None,"UNSEEN")
-
-    ids=set(to_ids[0].split()) & set(unseen[0].split())
-    if not ids: return None
-
-    i=sorted(ids,key=lambda x:int(x))[-1]
-    _,data=imap.fetch(i,"(BODY.PEEK[])")
-    msg=email.message_from_bytes(data[0][1])
-
-    body=""
-    for p in msg.walk():
-      if p.get_content_type()=="text/plain":
-        body=p.get_payload(decode=True).decode(errors="ignore")
-        break
-
-    m=re.search(r"https?://[^\\s\\\"'<>]*new-customer[^\\s\\\"'<>]*",body)
-    if not m: return None
-
-    imap.store(i,"+FLAGS","\\\\Seen")
-    imap.store(i,"+FLAGS","\\\\Deleted")
-    imap.expunge()
-
-    return m.group(0)
-  except:
-    return None
-  finally:
-    try: imap.close(); imap.logout()
-    except: pass
-
-t=time.time()
-while time.time()-t<300:
-  r=fetch()
-  if r:
-    pasteboard.set_string(r)
-    print(r,end="")
-    break
-  time.sleep(5)
-
-webbrowser.open("jsbox://")
-`;
-
-  $clipboard.text = "";
-  $app.openURL("pyto://x-callback/?code=" + encodeURIComponent(code));
-}
-
-async function waitCreateLink() {
-  const start = Date.now();
-  while (Date.now() - start < POLL_LINK_TIMEOUT) {
-    const t = $clipboard.text || "";
-    if (t.startsWith("http") && t.includes("new-customer")) return t;
-    await delay(POLL_LINK_INTERVAL);
+  if (!csrfEl) {
+    window.__REQ_STATE = "NO_CSRF";
+    return;
   }
+
+  if (emailEl) {
+    emailEl.value = ${JSON.stringify(email)};
+    emailEl.dispatchEvent(new Event("input", { bubbles:true }));
+    emailEl.dispatchEvent(new Event("change", { bubbles:true }));
+  }
+
+  const xhr = new XMLHttpRequest();
+  xhr.open(
+    "POST",
+    "/on/demandware.store/Sites-POL-Site/ja_JP/Account-SubmitConfirmationEmail?rurl=1",
+    true
+  );
+
+  xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  xhr.onload = function() {
+    try {
+      const r = JSON.parse(xhr.responseText);
+
+      if (xhr.status === 200 && r.success && r.redirectUrl) {
+        window.__REQ_STATE = "POST_OK";
+        location.href = r.redirectUrl;
+      } else {
+        window.__REQ_STATE = "POST_FAIL";
+      }
+    } catch(e) {
+      window.__REQ_STATE = "POST_FAIL";
+    }
+  };
+
+  xhr.onerror = function() {
+    window.__REQ_STATE = "XHR_ERROR";
+  };
+
+  xhr.send(
+    "dwfrm_profile_confirmationEmail_email=" +
+      encodeURIComponent(${JSON.stringify(email)}) +
+    "&csrf_token=" +
+      encodeURIComponent(csrfEl.value)
+  );
+})();
+  `);
+
+  let form2Ok = false;
+
+  for (let i = 0; i < 40; i++) {
+    await Web.delay(500);
+
+    const done = await Web.evalJS(wv, `
+      !!document.querySelector("#send-confirmation-email") ||
+      document.title.includes("メールアドレス確認") ||
+      document.body.innerText.includes("メールアドレス確認")
+    `);
+
+    const state = await Web.evalJS(wv, `window.__REQ_STATE || ""`);
+
+    if (done) {
+      form2Ok = true;
+      break;
+    }
+
+    if (
+      state === "POST_FAIL" ||
+      state === "XHR_ERROR" ||
+      state === "NO_CSRF"
+    ) {
+      break;
+    }
+  }
+
+  if (!form2Ok) {
+    Core.addLog("Fallback click create", "warn");
+
+    const clicked = await Web.evalJS(wv, `
+(function(){
+  const btn = document.querySelector("#form2Button");
+  if (!btn) return "NO_BUTTON";
+
+  btn.disabled = false;
+  btn.removeAttribute("disabled");
+  btn.click();
+
+  return "CLICKED";
+})();
+    `);
+
+    if (clicked !== "CLICKED") {
+      throw new Error("FORM2_CLICK_FAIL");
+    }
+
+    form2Ok = await waitCreateConfirmPage(wv, 5000);
+
+    if (!form2Ok) {
+      throw new Error("FORM2_TIMEOUT");
+    }
+  }
+
+  await Web.delay(1500);
+
+  const sendClicked = await Web.evalJS(wv, `
+(function(){
+  const btn = document.querySelector("#send-confirmation-email");
+  if (!btn) return "NO_BUTTON";
+
+  btn.disabled = false;
+  btn.removeAttribute("disabled");
+
+  btn.dispatchEvent(new MouseEvent("mousedown", { bubbles:true, cancelable:true }));
+  btn.dispatchEvent(new MouseEvent("mouseup", { bubbles:true, cancelable:true }));
+  btn.dispatchEvent(new MouseEvent("click", { bubbles:true, cancelable:true }));
+
+  try { btn.click(); } catch(e) {}
+
+  return "CLICKED";
+})();
+  `);
+
+  if (sendClicked !== "CLICKED") {
+    throw new Error("SEND_MAIL_CLICK_FAIL");
+  }
+
+  for (let i = 0; i < 40; i++) {
+    await Web.delay(500);
+
+    const done = await Web.evalJS(wv, `
+      document.title.includes("仮登録メールが送信されました") ||
+      document.body.innerText.includes("仮登録メールが送信されました")
+    `);
+
+    if (done) {
+      Core.addLog("Send create mail OK", "success");
+      return true;
+    }
+  }
+
+  throw new Error("SEND_MAIL_TIMEOUT");
+}
+
+async function isExpiredRegisterPage(wv) {
+  return await Web.evalJS(wv, `
+(() => {
+  const s =
+    document.title +
+    "\\n" +
+    (document.body?.innerText || "");
+
+  return (
+    s.includes("システムエラー") ||
+    s.includes("会員登録の有効期限が切れました")
+  );
+})();
+  `);
+}
+
+async function openCreateLinkWithRetry(wv, acc, form, stopCheck) {
+  for (let retry = 1; retry <= 3; retry++) {
+    checkStop(stopCheck);
+
+    Core.addLog("Get create link try " + retry + "/3", "info");
+
+    const link = await OTP.getOtpDirect(
+      form.imapEmail,
+      form.imapPass,
+      acc.email,
+      "Create"
+    );
+
+    if (!link) {
+      Core.addLog("No create link", "warn");
+      continue;
+    }
+
+    if (link === "REGISTERED_MAIL") {
+      Core.addLog("Registered mail: " + acc.email, "success");
+      return "REGISTERED_MAIL";
+    }
+
+    wv.url = link;
+
+    await Web.waitPageReady(wv, 30000);
+    await Web.delay(2000);
+
+    const expired = await isExpiredRegisterPage(wv);
+
+    if (!expired) {
+      Core.addLog("Create link OK", "success");
+      return link;
+    }
+
+    Core.addLog("Old link / system error", "warn");
+  }
+
   return null;
 }
 
-// =======================================================
-// FAST FORM FILL (🔥 CORE)
-// =======================================================
-async function fillAll(wv, d) {
-  await wv.eval({
-    script: `
-    (function(){
+async function submitRegistration(wv) {
+  Core.addLog("Request submit registration", "info");
 
-      const setVal = (sel, val) => {
-        const e = document.querySelector(sel);
-        if (!e) return;
-        e.value = val;
-        e.dispatchEvent(new Event("input", { bubbles: true }));
-        e.dispatchEvent(new Event("change", { bubbles: true }));
-      };
+  await Web.evalJS(wv, `
+(function(){
+  window.__SUBMIT = "RUNNING";
 
-      // ===== TEXT =====
-      setVal("#registration-form-fname", ${JSON.stringify(d.name)});
-      setVal("#registration-form-kana", ${JSON.stringify(d.kana)});
-      setVal("#registration-form-birthdayyear", "1992");
-      setVal("#registration-form-birthdaymonth", "11");
-      setVal("#registration-form-birthdayday", "24");
-      setVal("#registration-form-postcode", ${JSON.stringify(d.postcode)});
-      setVal("#registration-form-address-level1", ${JSON.stringify(d.pref)});
-      setVal("#registration-form-address-level2", ${JSON.stringify(d.city)});
-      setVal("#registration-form-address-line1", ${JSON.stringify(d.line1)});
-      setVal("#registration-form-address-line2", ${JSON.stringify(d.line2)});
-      setVal("[name='dwfrm_profile_customer_phone']", ${JSON.stringify(d.phone)});
-      setVal("[name='dwfrm_profile_login_password']", ${JSON.stringify(d.pass)});
-      setVal("[name='dwfrm_profile_login_passwordconfirm']", ${JSON.stringify(d.pass)});
+  const csrf =
+    document.querySelector('input[name="csrf_token"]')?.value;
 
-      // ===== ❌ KHÔNG NHẬN MAIL =====
-      const mailOff = document.querySelector(
-        "input[name='dwfrm_profile_customer_addtoemaillist'][value='false']"
-      );
-      if (mailOff) {
-        mailOff.checked = true;
-        mailOff.dispatchEvent(new Event("input",  { bubbles: true }));
-        mailOff.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-
-      // ===== CHECKBOX =====
-      const terms = document.querySelector(
-        "[name='dwfrm_profile_customer_agreetotheterms']"
-      );
-      if (terms) {
-        terms.checked = true;
-        terms.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-
-      const privacy = document.querySelector(
-        "[name='dwfrm_profile_customer_agreetotheprivacypolicy']"
-      );
-      if (privacy) {
-        privacy.checked = true;
-        privacy.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-
-      return true;
-    })();
-    `
-  });
-
-  // delay rất ngắn
-  await delay(500);
-}
-
-async function submit(wv) {
-  await wv.eval({ script:`document.querySelector("#registration_button")?.click();` });
-  await delay(2500);
-  await wv.eval({ script:`document.querySelector(".submitButton")?.click();` });
-  await delay(3500);
-}
-
-// =======================================================
-// PROCESS ONE ACCOUNT
-// =======================================================
-async function processAccount(acc, data, idx, total) {
-  const wv = await createWebView(`Create ${idx}/${total}`);
-  await clearSession(wv);
-
-  wv.url = LOGIN_URL;
-  await waitPageReady(wv);
-
-  // 🔥 FAST EMAIL INPUT
-  await wv.eval({
-    script: `
-      const e=document.querySelector("#login-form-regist-email");
-      if(e){
-        e.value=${JSON.stringify(acc.email)};
-        e.dispatchEvent(new Event('input',{bubbles:true}));
-        e.dispatchEvent(new Event('change',{bubbles:true}));
-      }
-    `
-  });
-  await delay(DELAY_EMAIL_STEP);
-
-  await wv.eval({ script:`document.querySelector('#form2Button')?.click();` });
-  await waitPageReady(wv);
-  await wv.eval({ script:`document.querySelector('#send-confirmation-email')?.click();` });
-  await waitPageReady(wv);
-
-  await callPytoGetCreateLink(acc.email);
-  const link = await waitCreateLink();
-  if (!link) return false;
-
-  wv.url = link;
-  await waitPageReady(wv);
-
-  await fillAll(wv, { ...data, pass: acc.pass });
-  await submit(wv);
-
-  // ✅ SAVE STATE
-  saveDone(acc);
-  removeFromPending(acc);
-
-  await clearSession(wv);
-  wv.remove();
-  $ui.pop();
-  
-  $app.openURL("shortcuts://run-shortcut?name=" + encodeURIComponent("Reset IP"));
-  await delay(6000);
-
-  return true;
-}
-
-// =======================================================
-// ENTRY
-// =======================================================
-async function run(ctx) {
-  STOP_FLAG = false;
-  IMAP_EMAIL = ctx.imapEmail;
-  IMAP_PASS  = ctx.imapPass;
-
-  const accounts = parseMailPass(ctx.accounts.map(a => `${a.email}:${a.pass}`));
-  if (!accounts.length) return;
-
-  savePending(accounts);
-
-  for (let i = 0; i < accounts.length; i++) {
-    if (STOP_FLAG) break;
-
-    await processAccount(
-      accounts[i],
-      {
-        name: ctx.names[i % ctx.names.length],
-        kana: ctx.kanas[i % ctx.kanas.length],
-        line1: ctx.addresses[i % ctx.addresses.length],
-        line2: "",
-        phone: ctx.phones[i % ctx.phones.length],
-        postcode: ctx.postcode,
-        pref: ctx.pref,
-        city: ctx.address1
-      },
-      i + 1,
-      accounts.length
-    );
-
-    ctx.onProgress &&
-      ctx.onProgress(
-        loadPending().map(a => `${a.email}:${a.pass}`).join("\n"),
-        { lastEmail: accounts[i].email, pending: loadPending().length }
-      );
+  if (!csrf) {
+    window.__SUBMIT = "NO_CSRF";
+    return;
   }
 
-  $ui.alert("🎉 CREATE DONE");
+  const xhr = new XMLHttpRequest();
+
+  xhr.open(
+    "POST",
+    "/on/demandware.store/Sites-POL-Site/ja_JP/Account-SubmitRegistration",
+    true
+  );
+
+  xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  xhr.onload = () => {
+    try {
+      const r = JSON.parse(xhr.responseText);
+
+      if (xhr.status === 200) {
+        window.__SUBMIT = "POST_OK";
+
+        if (r.redirectUrl) {
+          location.href = r.redirectUrl;
+        }
+      } else {
+        window.__SUBMIT = "FAIL";
+      }
+    } catch(e) {
+      window.__SUBMIT = "FAIL";
+    }
+  };
+
+  xhr.onerror = () => {
+    window.__SUBMIT = "FAIL";
+  };
+
+  xhr.send(
+    "csrf_token=" + encodeURIComponent(csrf)
+  );
+})();
+  `);
+
+  for (let i = 0; i < 40; i++) {
+    await Web.delay(500);
+
+    const state = await Web.evalJS(wv, `window.__SUBMIT || ""`);
+
+    const done = await Web.evalJS(wv, `
+      document.title.includes("会員登録完了") ||
+      document.body.innerText.includes("会員登録完了")
+    `);
+
+    if (done) {
+      Core.addLog("Submit registration OK", "success");
+      Core.playSuccessSound();
+      await Web.delay(1000);
+      return true;
+    }
+
+    if (state === "FAIL" || state === "NO_CSRF") {
+      break;
+    }
+  }
+
+  Core.addLog("Fallback click submit", "warn");
+
+  const clicked = await Web.evalJS(wv, `
+(function(){
+  const btn = document.querySelector(".submitButton");
+  if (!btn) return "NO_BUTTON";
+
+  btn.disabled = false;
+  btn.removeAttribute("disabled");
+  btn.click();
+
+  return "CLICKED";
+})();
+  `);
+
+  if (clicked !== "CLICKED") {
+    throw new Error("SUBMIT_REQUEST_FAIL_AND_CLICK_FAIL");
+  }
+
+  for (let i = 0; i < 40; i++) {
+    await Web.delay(500);
+
+    const done = await Web.evalJS(wv, `
+      document.title.includes("会員登録完了") ||
+      document.body.innerText.includes("会員登録完了")
+    `);
+
+    if (done) {
+      Core.addLog("Submit click OK", "success");
+      Core.playSuccessSound();
+      await Web.delay(1000);
+      return true;
+    }
+  }
+
+  throw new Error("CLICK_TIMEOUT");
 }
 
-function stop(){ STOP_FLAG = true; }
+async function runAccount(ctx) {
+  const acc = ctx.acc;
+  const index = ctx.index;
+  const total = ctx.total;
+  const form = ctx.form || {};
+  const stopCheck = ctx.stopCheck;
 
-module.exports = { run, stop };
+  const email = acc.email;
+  const pass = acc.pass;
+
+  const data = getRunData(form, acc, index);
+
+  let wv = null;
+
+  try {
+    checkStop(stopCheck);
+
+    Core.updateCurrent({
+      email,
+      step: "CREATE",
+      status: "Create WebView",
+      index,
+      total
+    });
+
+    wv = Web.create("about:blank");
+
+    if (!wv) {
+      throw new Error("Cannot create WebView");
+    }
+
+    let createMailOk = false;
+
+    for (let retry = 1; retry <= 3; retry++) {
+      checkStop(stopCheck);
+
+      Core.updateCurrent({
+        email,
+        step: "CREATE MAIL",
+        status: "Try " + retry + "/3",
+        index,
+        total
+      });
+      
+      try {
+        wv.url = HOME_URL;
+        await Web.waitPageReady(wv, 30000);
+        await Web.delay(1500);
+
+        wv.url = LOGIN_URL;
+        await Web.waitPageReady(wv, 30000);
+        await Web.delay(1500);
+
+        await submitAndSendConfirmationEmail(wv, email);
+
+        createMailOk = true;
+        break;
+
+      } catch (e) {
+        Core.addLog(
+          "Create mail fail: " + (e.message || e),
+          "error"
+        );
+
+        await Session.cleanupAccount(wv, index, total, {
+          logout: false,
+          resetIP: true
+        });
+
+        wv = Web.create("about:blank");
+
+        if (!wv) {
+          throw new Error("Cannot recreate WebView");
+        }
+      }
+    }
+
+    if (!createMailOk) {
+      return {
+        ok: false,
+        reason: "CREATE_MAIL_RETRY_FAILED"
+      };
+    }
+
+    await Web.delay(2000);
+
+    Core.updateCurrent({
+      email,
+      step: "LINK",
+      status: "Waiting create link",
+      index,
+      total
+    });
+
+    const link = await openCreateLinkWithRetry(
+      wv,
+      acc,
+      form,
+      stopCheck
+    );
+
+    if (!link) {
+      return {
+        ok: false,
+        reason: "CREATE_LINK_FAILED"
+      };
+    }
+
+    if (link === "REGISTERED_MAIL") {
+      return {
+        ok: true,
+        reason: "REGISTERED_MAIL"
+      };
+    }
+
+    const profile =
+      FormFill.normalizeProfileData({
+        names: data.name,
+        kanas: data.kana,
+        phones: data.phone,
+        postcode: data.postcode,
+        pref: data.pref,
+        address1: data.city,
+        address2: data.address2,
+        birthdate: data.birthdate
+      });
+
+    Core.updateCurrent({
+      email,
+      step: "FORM",
+      status: "Fill create form",
+      index,
+      total
+    });
+
+    await FormFill.fillCreateForm(
+      wv,
+      Object.assign({}, profile, {
+        pass
+      })
+    );
+
+    await Web.delay(1000);
+
+    Core.updateCurrent({
+      email,
+      step: "SUBMIT",
+      status: "Submit registration",
+      index,
+      total
+    });
+
+    await Web.tapButton(wv, "#registration_button");
+    await Web.delay(1500);
+
+    await submitRegistration(wv);
+
+    Core.addLog(
+      "Create success: " + email,
+      "success"
+    );
+
+    return {
+      ok: true,
+      reason: "CREATE_SUCCESS",
+      data
+    };
+
+  } finally {
+    try {
+      await Session.cleanupAccount(wv, index, total, {
+        logout: true,
+        resetIP: true
+      });
+    } catch (e) {
+      //
+    }
+  }
+}
+
+module.exports = {
+  runAccount
+};

@@ -315,6 +315,36 @@ async function acceptTermsIfNeeded(wv) {
   await delay(1500);
 }
 
+async function waitVisible(wv, selector, timeout) {
+  const start = Date.now();
+
+  while (Date.now() - start < (timeout || 30000)) {
+    const ok = await evalJS(wv, `
+(() => {
+  const el = document.querySelector(${JSON.stringify(selector)});
+  if (!el) return false;
+
+  const s = getComputedStyle(el);
+  const r = el.getBoundingClientRect();
+
+  return (
+    s.display !== "none" &&
+    s.visibility !== "hidden" &&
+    s.opacity !== "0" &&
+    r.width > 0 &&
+    r.height > 0
+  );
+})()
+    `);
+
+    if (ok) return true;
+
+    await delay(300);
+  }
+
+  return false;
+}
+
 module.exports = {
   delay,
   get,
@@ -325,6 +355,7 @@ module.exports = {
   evalJS,
   waitVar,
   waitPageReady,
+  waitVisible,
 
   showNotify,
   tapButton,

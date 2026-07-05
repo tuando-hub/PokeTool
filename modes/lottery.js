@@ -486,13 +486,17 @@ async function runAccount(ctx) {
           reason: failed ? failed.error : "OK",
           results
       };
-  } finally{
-    await Session.cleanupAccount(
-      wv,
-      index,
-      total
-    );
-  }
+    } finally {
+      await Session.cleanupAccount(
+        wv,
+        index,
+        total,
+        {
+          logout: true,
+          resetIP: true
+        }
+      );
+    }
 }
 
 module.exports = {

@@ -292,27 +292,34 @@ async function runAccount(ctx) {
         authRs.finalJson || {}
       );
     
-    const changeRs = await changeOrderAddressByRequest(
-      wv,
-      found.orderNo,
-      profile
-    );
-    
-    Core.addLog(
-      "Change address request: " +
-        (changeRs.status || changeRs.reason || "UNKNOWN"),
-      changeRs.ok ? "success" : "error"
-    );
+    const changeRs =
+      await FormFill.fillOrderAddressForm(
+        wv,
+        profile
+      );
     
     if (!changeRs.ok) {
+      Core.addLog(
+        "Change address failed",
+        "error"
+      );
+      
+      wv.url = "https://www.pokemoncenter-online.com/mypage/";   
+      await Web.waitPageReady(wv, 30000);
+      await Web.delay(2000);
+    
       return {
         ok: false,
-        reason: "CHANGE_ADDRESS_REQUEST_FAIL",
+        reason: "CHANGE_ADDRESS_FAIL",
         orderNo: found.orderNo,
-        productId: found.productId,
-        meta: changeRs
+        productId: found.productId
       };
     }
+    
+    Core.addLog(
+      "Address changed",
+      "success"
+    );
     
     Core.playSuccessSound();
     return {

@@ -19,10 +19,24 @@ function modeTitle(mode) {
   if (mode === "Buy") return "🛒 Buy";
   if (mode === "Create") return "🛠 Create";
   if (mode === "ChangeProfile") return "📝 Profile";
-  if (mode === "ChangeEmail") return "📧 Email";
-  if (mode === "CheckResult") return "🔍 Result";
+  if (mode === "ChangeEmail") return "📧 Change Email";
+  if (mode === "CheckResult") return "🔍 Check Result";
   if (mode === "ChangeProfileOrder") return "📝 ChangeProfileOrder";
   return mode || "Mode";
+}
+
+function modeMeta(mode) {
+  const map = {
+    Lottery: ["🎯", "Lottery", "応募・抽選"],
+    Buy: ["🛒", "Buy", "購入"],
+    Create: ["🛠", "Create", "新規アカウント"],
+    ChangeProfile: ["📝", "Change Profile", "プロフィール変更"],
+    ChangeEmail: ["📧", "Change Email", "メール変更"],
+    CheckResult: ["🔍", "Check Result", "結果確認"],
+    ChangeProfileOrder: ["📦", "Change Profile Order", "注文住所変更"]
+  };
+
+  return map[mode] || ["⚙️", mode || "Mode", ""];
 }
 
 function render() {
@@ -252,20 +266,20 @@ function headerCard(top) {
       type: "button",
       props: {
         id: "modeBtn",
-        title: "Lottery",
+        title: modeTitle(Core.getState().mode) + " ▼",
         bgcolor: $color("#111827"),
         titleColor: $color("#F8FAFC"),
         borderWidth: 1.3,
         borderColor: $color("#6366F1"),
         radius: 21,
-        font: $font("bold", 12),
-        minimumScaleFactor: 0.45,
+        font: $font("bold", sw < 390 ? 10 : 12),
+        minimumScaleFactor: 0.35,
         adjustsFontSizeToFitWidth: true
       },
       layout: make => {
         make.right.inset(14);
         make.centerY.equalTo();
-        make.width.equalTo(modeW);
+        make.width.equalTo(sw < 390 ? 135 : 180);
         make.height.equalTo(42);
       },
       events: {
@@ -1111,12 +1125,79 @@ function refreshQueueResult(s) {
 // ================= ACTIONS =================
 
 function showModeMenu() {
-  $ui.menu({
-    items: Core.MODES,
-    handler(title) {
-      Core.setMode(title);
-      Core.addLog("Mode changed: " + title, "info");
-    }
+  const modes = Core.MODES || [];
+  const rowH = 66;
+
+  $ui.push({
+    props: {
+      title: "Select Mode",
+      bgcolor: $color(T.bg)
+    },
+    views: [
+      {
+        type: "label",
+        props: {
+          text: "Choose Mode",
+          textColor: $color(T.text),
+          font: $font("bold", 24)
+        },
+        layout: make => {
+          make.top.equalTo(18);
+          make.left.equalTo(18);
+          make.height.equalTo(32);
+        }
+      },
+      {
+        type: "view",
+        props: {
+          bgcolor: $color("#0B1220"),
+          radius: 18,
+          borderWidth: 1,
+          borderColor: $color("#1E293B")
+        },
+        layout: make => {
+          make.top.equalTo(64);
+          make.left.right.inset(14);
+          make.height.equalTo(modes.length * rowH + 12);
+        },
+        views: modes.map((mode, i) => {
+          const meta = modeMeta(mode);
+          const selected = Core.getState().mode === mode;
+
+          return {
+            type: "button",
+            props: {
+              title:
+                meta[0] +
+                "  " +
+                meta[1] +
+                (selected ? "   ✓" : "") +
+                "\n" +
+                meta[2],
+              bgcolor: $color(selected ? "#1E293B" : "clear"),
+              titleColor: $color(selected ? "#FDE047" : "#E5E7EB"),
+              font: $font("bold", 14),
+              align: $align.left,
+              radius: 14,
+              contentEdgeInsets: $insets(8, 14, 8, 14)
+            },
+            layout: make => {
+              make.left.right.inset(10);
+              make.top.equalTo(8 + i * rowH);
+              make.height.equalTo(rowH - 8);
+            },
+            events: {
+              tapped() {
+                Core.setMode(mode);
+                Core.addLog("Mode changed: " + mode, "info");
+                $ui.pop();
+                renderCurrentTab();
+              }
+            }
+          };
+        })
+      }
+    ]
   });
 }
 

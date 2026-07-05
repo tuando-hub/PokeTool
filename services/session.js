@@ -1,27 +1,33 @@
-// ================= SESSION SERVICE - PokeTool V1.2 =================
-
 const Core = require("../core");
 const Web = require("../web");
 
-async function cleanupAccount(wv, index, total) {
+async function cleanupAccount(wv, index, total, opt) {
+  opt = opt || {};
+
+  const doLogout = opt.logout === true;
+  const resetIP = opt.resetIP !== false;
+
   if (!wv) return;
 
-  try {
-    await Web.showNotify(
-      wv,
-      "(" + index + "/" + total + ") 🚪 Logout...",
-      1500
-    );
-  } catch (e) {
-    //
-  }
+  if (doLogout) {
+    try {
+      wv.url = "https://www.pokemoncenter-online.com/mypage/";
+      await Web.waitPageReady(wv, 15000);
+      await Web.delay(1000);
 
-  try {
-    await Web.tapButton(wv, "a.logout");
-    await Web.waitPageReady(wv, 10000);
-    Core.addLog("Logout OK", "success");
-  } catch (e) {
-    Core.addLog("Logout skip", "warn");
+      await Web.showNotify(
+        wv,
+        "(" + index + "/" + total + ") 🚪 Logout...",
+        1500
+      );
+
+      await Web.tapButton(wv, "a.logout");
+      await Web.waitPageReady(wv, 10000);
+
+      Core.addLog("Logout OK", "success");
+    } catch (e) {
+      Core.addLog("Logout skip", "warn");
+    }
   }
 
   try {
@@ -36,14 +42,16 @@ async function cleanupAccount(wv, index, total) {
     //
   }
 
-  try {
-    $app.openURL(
-      "shortcuts://run-shortcut?name=" +
-        encodeURIComponent("Reset IP")
-    );
-    await Web.delay(6000);
-  } catch (e) {
-    //
+  if (resetIP) {
+    try {
+      $app.openURL(
+        "shortcuts://run-shortcut?name=" +
+          encodeURIComponent("Reset IP")
+      );
+      await Web.delay(6000);
+    } catch (e) {
+      //
+    }
   }
 }
 
