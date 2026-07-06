@@ -515,6 +515,8 @@ async function loginOtpTerms(ctx) {
     index,
     total
   });
+  
+  const finalJson = await getFinalJson(wv);
 
   await Web.delay(2000);
 
@@ -534,8 +536,6 @@ async function loginOtpTerms(ctx) {
     await Web.showNotify(wv, "Accepting terms...", 2500);
     await Web.acceptTermsIfNeeded(wv);
   }
-  
-  const finalJson = await getFinalJson(wv);
 
   return {
     ok: true,

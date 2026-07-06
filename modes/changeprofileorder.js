@@ -15,10 +15,23 @@ function checkStop(stopCheck) {
 }
 
 function getRunForm(form, acc) {
-  return Object.assign({}, form || {}, {
+  form = form || {};
+  acc = acc || {};
+
+  return Object.assign({}, form, {
     imapEmail: acc.imapEmail || form.imapEmail,
     imapPass: acc.imapPass || form.imapPass,
-    productIds: acc.productIds || form.productIds
+    productIds: acc.productIds || form.productIds,
+
+    names: acc.names || acc.name || "",
+    kanas: acc.kanas || acc.kana || "",
+    phones: acc.phones || acc.phone || "",
+
+    postcode: acc.postcode || "",
+    pref: acc.pref || "",
+    address1: acc.address1 || acc.city || "",
+    address2: acc.address2 || "",
+    birthdate: acc.birthdate || ""
   });
 }
 
