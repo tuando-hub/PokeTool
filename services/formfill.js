@@ -148,11 +148,6 @@ async function fillOrderAddressForm(wv, profile) {
     await Web.waitPageReady(wv, 30000);
     await Web.delay(5000);
 
-    wv.url = "https://www.pokemoncenter-online.com/mypage/";
-
-    await Web.waitPageReady(wv, 30000);
-    await Web.delay(2000);
-
     return {
       ok: true
     };

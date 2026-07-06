@@ -458,7 +458,10 @@ async function runCheckAccOne(acc, index, total, form, stopCheck) {
     };
 
   } finally {
-    await Session.cleanupAccount(wv, index, total);
+    await Session.cleanupAccount(wv, index, total, {
+      logout: true,
+      resetIP: true
+    });
   }
 }
 

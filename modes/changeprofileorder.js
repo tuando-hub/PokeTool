@@ -303,10 +303,6 @@ async function runAccount(ctx) {
         "Change address failed",
         "error"
       );
-      
-      wv.url = "https://www.pokemoncenter-online.com/mypage/";   
-      await Web.waitPageReady(wv, 30000);
-      await Web.delay(2000);
     
       return {
         ok: false,
@@ -332,7 +328,14 @@ async function runAccount(ctx) {
     };
 
   } finally {
-    await Session.cleanupAccount(wv, index, total);
+    try {
+          await Session.cleanupAccount(wv, index, total, {
+            logout: true,
+            resetIP: true
+          });
+        } catch (e) {
+          //
+        }
   }
 }
 
