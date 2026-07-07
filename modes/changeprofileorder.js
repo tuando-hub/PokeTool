@@ -233,9 +233,28 @@ async function runAccount(ctx) {
       index,
       total
     });
-
+    
     if (!authRs.ok) {
       return authRs;
+    }
+    
+    const data = authRs.finalJson?.data;
+    
+    if (
+      !data ||
+      !data.fullName ||
+      !data.fullNameKana ||
+      !data.phoneNumber
+    ) {
+      Core.addLog(
+        "Account Info not found",
+        "error"
+      );
+    
+      return {
+        ok: false,
+        reason: "ACCOUNT_INFO_NOT_FOUND"
+      };
     }
 
     checkStop(stopCheck);

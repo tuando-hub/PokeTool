@@ -53,15 +53,12 @@ function pushFailed(acc, error, meta) {
   const list = Core.loadJSON(Core.FILE_FAILED, []);
   const reason = String(error || "Unknown error");
 
-  list.push({
-    email: acc.email,
-    pass: acc.pass,
+  list.push(Object.assign({}, acc, {
     text: `${acc.email}:${acc.pass}\t${reason}`,
     reason,
     failedAt: Date.now(),
-    meta: meta || {},
-    data: meta && meta.data ? meta.data : acc.data
-  });
+    meta: meta || {}
+  }));
 
   Core.saveJSON(Core.FILE_FAILED, list);
   Core.refreshStats();
