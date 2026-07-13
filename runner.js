@@ -271,7 +271,7 @@ async function run() {
       const index = total - pending.length + 1;
 
       try {
-        Core.addLog("************************", "info");
+        Core.addLog("*************************************", "info");
         Core.addLog("Start account: " + acc.email, "info");
 
         const result = await runOneAccount(acc, index, total);

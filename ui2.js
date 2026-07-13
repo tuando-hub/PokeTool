@@ -6,30 +6,11 @@ const Core = require("./core");
 const T = Core.THEME;
 
 const sw = $device.info.screen.width;
-//const sh = $device.info.screen.height;
+const sh = $device.info.screen.height;
 
+const TAB_H = 70;
 const CARD_X = 12;
 const CARD_W = sw - CARD_X * 2;
-const STATUS_H = 28;
-const TAB_H = 62;
-const BOTTOM_H = STATUS_H + TAB_H;
-
-let refreshTimer = null;
-let lastProgressWidth = 1;
-let lastTab = null;
-
-let listenerRegistered = false;
-
-let queueDirty = true;
-let dashboardDirty = true;
-let tabsDirty = true;
-let resultDirty = true;
-
-let cachedQueueResult = {
-  pendingText: "No pending",
-  doneText: "No done",
-  failedText: "No failed"
-};
 
 const UI = {
   CARD_BG: "#111827",
@@ -56,162 +37,98 @@ const UI = {
 let WEB_URL = "about:blank";
 let g_importData = null;
 
+let refreshTimer = null;
+let lastProgressWidth = 1;
+let lastTab = null;
+
 // ============================================================
 // PERFORMANCE / ANIMATION HELPERS
 // ============================================================
 
-function scheduleRefresh(changeType) {
-  const type =
-    typeof changeType === "string"
-      ? changeType
-      : "state";
-
-  if (
-    type === "queue" ||
-    type === "result" ||
-    type === "reset"
-  ) {
-    queueDirty = true;
-    resultDirty = true;
-  }
-
-  if (
-    type === "tab" ||
-    type === "mode"
-  ) {
-    tabsDirty = true;
-  }
-
-  dashboardDirty = true;
-
+function scheduleRefresh() {
   if (refreshTimer) {
-    return;
+    clearTimeout(refreshTimer);
   }
 
   refreshTimer = setTimeout(() => {
     refreshTimer = null;
     refresh();
-  }, 16);
+  }, 24);
 }
 
 function pressFeedback(sender, handler) {
-  if (typeof handler === "function") {
-    try {
+  if (!sender) {
+    if (typeof handler === "function") {
       handler();
-    } catch (error) {
-      Core.addLog(
-        "Button error: " +
-          String(error.message || error),
-        "error"
-      );
     }
+    return;
   }
 
-  if (!sender) return;
-
   try {
-    sender.userInteractionEnabled = false;
+    sender.enabled = false;
 
     $ui.animate({
       duration: 0.07,
-
       animation: () => {
         sender.alpha = 0.72;
-        sender.scale(0.97);
+        sender.scale(0.965);
       },
-
       completion: () => {
         $ui.animate({
-          duration: 0.1,
-
+          duration: 0.13,
           animation: () => {
             sender.alpha = 1;
             sender.scale(1);
           },
-
           completion: () => {
-            sender.userInteractionEnabled = true;
+            sender.enabled = true;
+
+            if (typeof handler === "function") {
+              handler();
+            }
           }
         });
       }
     });
   } catch (error) {
-    sender.alpha = 1;
-    sender.userInteractionEnabled = true;
+    sender.enabled = true;
+
+    if (typeof handler === "function") {
+      handler();
+    }
   }
 }
 
-function animateProgress(percent, force) {
-  const fill =
-    $("progressFill");
+function animateProgress(width) {
+  const fill = $("progressFill");
 
   if (!fill) return;
 
-  const safePercent =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Number(percent) || 0
-      )
-    );
+  const targetWidth = Math.max(1, width);
 
-  const trackWidth =
-    CARD_W - 44;
-
-  const targetWidth =
-    safePercent <= 0
-      ? 1
-      : Math.max(
-          1,
-          Math.round(
-            trackWidth *
-              safePercent /
-              100
-          )
-        );
-
-  if (
-    !force &&
-    targetWidth ===
-      lastProgressWidth
-  ) {
+  if (targetWidth === lastProgressWidth) {
     return;
   }
 
-  lastProgressWidth =
-    targetWidth;
+  lastProgressWidth = targetWidth;
 
   try {
-    fill.updateLayout(make => {
-      make.width.equalTo(
-        targetWidth
-      );
-    });
+    $ui.animate({
+      duration: 0.24,
+      animation: () => {
+        fill.updateLayout(make => {
+          make.width.equalTo(targetWidth);
+        });
 
-    if (
-      fill.super &&
-      typeof fill.super.layoutIfNeeded ===
-        "function"
-    ) {
-      $ui.animate({
-        duration: 0.18,
-
-        animation: () => {
-          fill.super.layoutIfNeeded();
+        if (fill.super) {
+          fill.super.updateLayout();
         }
-      });
-    }
+      }
+    });
   } catch (error) {
-    try {
-      fill.updateLayout(make => {
-        make.width.equalTo(
-          targetWidth
-        );
-      });
-    } catch (layoutError) {
-      //
-    }
+    fill.updateLayout(make => {
+      make.width.equalTo(targetWidth);
+    });
   }
 }
 
@@ -324,42 +241,16 @@ function render() {
         views: [
           contentView(),
           webHost(),
-          bottomDock()
+          bottomTabs()
         ]
       }
     ]
   });
 
-  if (!listenerRegistered) {
-    listenerRegistered = true;
-
-    Core.onChange(change => {
-      let type = "state";
-
-      if (
-        typeof change === "string"
-      ) {
-        type = change;
-      } else if (
-        change &&
-        typeof change.type ===
-          "string"
-      ) {
-        type = change.type;
-      }
-
-      scheduleRefresh(type);
-    });
-  }
-
-  lastTab = null;
-  queueDirty = true;
-  resultDirty = true;
-  dashboardDirty = true;
-  tabsDirty = true;
+  Core.onChange(scheduleRefresh);
 
   renderCurrentTab();
-  refresh(true);
+  refresh();
 }
 
 // ============================================================
@@ -378,11 +269,8 @@ function webHost() {
 
     layout: make => {
       make.top.left.right.equalTo(0);
-      make.bottom.inset(BOTTOM_H);
-    },
-
-    views: [
-    ]
+      make.bottom.inset(TAB_H);
+    }
   };
 }
 
@@ -406,263 +294,71 @@ function contentView() {
 
     layout: make => {
       make.top.left.right.equalTo(0);
-      make.bottom.inset(BOTTOM_H);
+      make.bottom.inset(TAB_H);
     }
   };
 }
 
-function bottomDock() {
+function bottomTabs() {
+  const tabs = [
+    ["Dashboard", "Home"],
+    ["Data", "Data"],
+    ["Browser", "Web"],
+    ["Result", "Result"]
+  ];
+
+  const count = tabs.length;
+  const tabWidth = sw / count;
+
   return {
     type: "view",
 
     props: {
-      id: "bottomDock",
-      bgcolor: $color(UI.TAB_BG),
-
+      id: "tabBar",
+      bgcolor: $color("#0F172A"),
       borderWidth: 1,
-      borderColor: $color(
-        UI.CARD_BORDER
-      )
+      borderColor: $color("#1E293B")
     },
 
     layout: make => {
       make.left.right.bottom.equalTo(0);
-      make.height.equalTo(BOTTOM_H);
+      make.height.equalTo(TAB_H);
     },
 
-    views: [
-      {
-        type: "view",
-
-        props: {
-          bgcolor: $color("#0B1220")
-        },
-
-        layout: make => {
-          make.top.left.right.equalTo(0);
-          make.height.equalTo(STATUS_H);
-        },
-
-        views: [
-          {
-            type: "view",
-
-            props: {
-              id: "bottomStatusDot",
-              bgcolor: $color(UI.RUN),
-              radius: 4
-            },
-
-            layout: make => {
-              make.left.equalTo(14);
-              make.centerY.equalTo();
-              make.size.equalTo(
-                $size(8, 8)
-              );
-            }
-          },
-
-          {
-            type: "label",
-
-            props: {
-              id: "bottomStatusText",
-
-              text: "Ready",
-
-              textColor: $color(
-                UI.TEXT_SOFT
-              ),
-
-              font: $font(
-                "bold",
-                10
-              ),
-
-              minimumScaleFactor: 0.5,
-              adjustsFontSizeToFitWidth: true
-            },
-
-            layout: make => {
-              make.left.equalTo(28);
-              make.right.inset(12);
-              make.top.bottom.equalTo(0);
-            }
-          }
-        ]
-      },
-
-      {
-        type: "view",
-
-        layout: make => {
-          make.top.equalTo(STATUS_H);
-          make.left.right.bottom.equalTo(0);
-        },
-
-        views: createTabButtons()
-      }
-    ]
-  };
-}
-
-function createTabButtons() {
-  const tabs = [
-    ["Dashboard", "house.fill", "Home"],
-    ["Data", "tray.full.fill", "Data"],
-    ["Browser", "globe", "Web"],
-    ["Result", "checkmark.circle.fill", "Result"]
-  ];
-
-  const width =
-    sw / tabs.length;
-
-  return tabs.map(
-    (tab, index) => {
+    views: tabs.map((tab, index) => {
       return {
-        type: "view",
+        type: "button",
 
         props: {
-          id:
-            "tabContainer_" +
-            tab[0]
+          id: "tab_" + tab[0],
+          title: tab[1],
+
+          bgcolor: $color("clear"),
+          titleColor: $color("#64748B"),
+
+          font: $font("bold", 12),
+          radius: 0
         },
 
         layout: make => {
-          make.left.equalTo(
-            index * width
-          );
-
+          make.left.equalTo(index * tabWidth);
           make.top.bottom.equalTo(0);
-          make.width.equalTo(width);
+          make.width.equalTo(tabWidth);
         },
 
-        views: [
-          {
-            type: "view",
-
-            props: {
-              id:
-                "tabIndicator_" +
-                tab[0],
-
-              bgcolor: $color(
-                UI.TAB_ACTIVE
-              ),
-
-              radius: 1.5,
-              hidden: true
-            },
-
-            layout: make => {
-              make.top.equalTo(0);
-              make.centerX.equalTo();
-              make.width.equalTo(30);
-              make.height.equalTo(3);
+        events: {
+          tapped(sender) {
+            if (Core.getState().tab === tab[0]) {
+              return;
             }
-          },
 
-          {
-            type: "image",
-
-            props: {
-              id:
-                "tabIcon_" +
-                tab[0],
-
-              symbol: tab[1],
-              tintColor: $color(
-                UI.TAB_INACTIVE
-              )
-            },
-
-            layout: make => {
-              make.top.equalTo(8);
-              make.centerX.equalTo();
-              make.size.equalTo(
-                $size(23, 23)
-              );
-            }
-          },
-
-          {
-            type: "label",
-
-            props: {
-              id:
-                "tabLabel_" +
-                tab[0],
-
-              text: tab[2],
-
-              align: $align.center,
-
-              textColor: $color(
-                UI.TAB_INACTIVE
-              ),
-
-              font: $font(
-                "bold",
-                10
-              )
-            },
-
-            layout: make => {
-              make.top.equalTo(34);
-              make.left.right.equalTo(0);
-              make.height.equalTo(18);
-            }
-          },
-
-          {
-            type: "button",
-
-            props: {
-              id: "tab_" + tab[0],
-              title: "",
-              bgcolor: $color("clear")
-            },
-
-            layout: $layout.fill,
-
-            events: {
-              tapped(sender) {
-                if (
-                  Core.getState().tab ===
-                  tab[0]
-                ) {
-                  return;
-                }
-
-                try {
-                  sender.super.alpha =
-                    0.65;
-
-                  $ui.animate({
-                    duration: 0.12,
-
-                    animation: () => {
-                      sender.super.alpha =
-                        1;
-                    }
-                  });
-                } catch (error) {
-                  //
-                }
-
-                Core.setTab(tab[0]);
-
-                tabsDirty = true;
-                dashboardDirty = true;
-
-                renderCurrentTab();
-              }
-            }
+            Core.setTab(tab[0]);
+            renderCurrentTab();
           }
-        ]
+        }
       };
-    }
-  );
+    })
+  };
 }
 
 // ============================================================
@@ -686,47 +382,32 @@ function clearContent() {
 }
 
 function renderCurrentTab() {
-  const state =
-    Core.getState();
-
-  const content =
-    $("content");
-
-  const host =
-    $("webHost");
-
-  const browserSelected =
-    state.tab === "Browser";
+  const state = Core.getState();
+  const content = $("content");
+  const host = $("webHost");
 
   if (host) {
     host.hidden =
-      !browserSelected;
+      state.tab !== "Browser";
   }
 
   if (content) {
     content.hidden =
-      browserSelected;
+      state.tab === "Browser";
   }
 
   if (!content) {
-    scheduleRefresh("tab");
+    refresh();
     return;
   }
 
-  if (browserSelected) {
-    lastTab = "Browser";
-    tabsDirty = true;
-    scheduleRefresh("tab");
+  if (
+    lastTab === state.tab &&
+    state.tab === "Browser"
+  ) {
+    refresh();
     return;
   }
-
-  if (lastTab === state.tab) {
-    tabsDirty = true;
-    scheduleRefresh("tab");
-    return;
-  }
-
-  blurAllInputs();
 
   lastTab = state.tab;
 
@@ -738,40 +419,33 @@ function renderCurrentTab() {
   let pageView = null;
   let height = 900;
 
-  switch (state.tab) {
-    case "Dashboard":
-      lastProgressWidth = -1;
-    
-      pageView =
-        dashboardPage();
-    
-      height = 660;
-      break;
+  if (state.tab === "Dashboard") {
+    pageView = dashboardPage();
+    height = 910;
+  }
 
-    case "Data":
-      pageView = dataPage();
-      height = dataPageHeight();
-      break;
+  if (state.tab === "Data") {
+    pageView = dataPage();
+    height = dataPageHeight();
+  }
 
-    case "Result":
-      pageView = resultPage();
-      height = 940;
-      resultDirty = true;
-      queueDirty = true;
-      break;
+  if (state.tab === "Browser") {
+    pageView = browserPage();
+    height = sh - TAB_H;
+  }
+
+  if (state.tab === "Result") {
+    pageView = resultPage();
+    height = 940;
   }
 
   if (pageView) {
     content.add(pageView);
-
     content.contentSize =
       $size(sw, height);
   }
 
-  dashboardDirty = true;
-  tabsDirty = true;
-
-  refresh(true);
+  refresh();
 }
 
 // ============================================================
@@ -781,13 +455,14 @@ function renderCurrentTab() {
 function dashboardPage() {
   return page(
     "dashboardPage",
-    660,
+    910,
     [
       headerCard(12),
       statsCard(112),
       progressCard(250),
       currentTaskCard(344),
-      runCard(572)
+      runCard(562),
+      logCard(634)
     ]
   );
 }
@@ -1209,7 +884,7 @@ function currentTaskCard(top) {
   return card(
     "currentCard",
     top,
-    210,
+    200,
     [
       {
         type: "label",
@@ -1232,53 +907,20 @@ function currentTaskCard(top) {
         type: "label",
 
         props: {
-          id: "curIndex",
-
-          text: "0 / 0  •  00:00",
-
-          align: $align.right,
-
-          textColor: $color(
-            UI.MUTED
-          ),
-
-          font: $font(
-            "bold",
-            11
-          )
-        },
-
-        layout: make => {
-          make.right.inset(18);
-          make.top.equalTo(17);
-          make.width.equalTo(150);
-          make.height.equalTo(22);
-        }
-      },
-
-      {
-        type: "label",
-
-        props: {
           id: "curEmail",
+
           text: "-",
 
-          textColor: $color(
-            "#FDE047"
-          ),
+          textColor: $color("#FDE047"),
+          font: $font("bold", 14),
 
-          font: $font(
-            "bold",
-            14
-          ),
-
-          minimumScaleFactor: 0.45,
+          minimumScaleFactor: 0.55,
           adjustsFontSizeToFitWidth: true
         },
 
         layout: make => {
           make.left.equalTo(18);
-          make.top.equalTo(48);
+          make.top.equalTo(50);
           make.right.inset(18);
           make.height.equalTo(24);
         }
@@ -1287,19 +929,19 @@ function currentTaskCard(top) {
       infoLine(
         "curMode",
         "MODE",
-        78
+        82
       ),
 
       infoLine(
         "curStep",
         "STEP",
-        114
+        118
       ),
 
       infoLine(
         "curStatus",
         "STATUS",
-        150
+        154
       )
     ]
   );
@@ -1436,55 +1078,18 @@ function runCard(top) {
         3,
         () => {
           try {
-            syncFormToCore();
-        
-            const form =
-              Core.getState().form || {};
-        
-            const mailList =
-              String(
-                form.mailList || ""
-              ).trim();
-        
-            if (!mailList) {
-              $ui.alert(
-                "MAIL LIST đang trống"
-              );
-        
-              return;
-            }
-        
-            const total =
-              Core.saveQueueFromForm(
-                form,
-                Core.getState().mode
-              );
-        
-            if (!total) {
-              $ui.alert(
-                "Không tạo được task"
-              );
-        
-              return;
-            }
-        
-            queueDirty = true;
-            resultDirty = true;
-            dashboardDirty = true;
-        
             require("./runner").run();
           } catch (error) {
             Core.addLog(
               "Runner error: " +
-                String(
-                  error.message || error
-                ),
+                error.message,
               "error"
             );
-        
+
             $ui.alert(
               String(
-                error.message || error
+                error.message ||
+                error
               )
             );
           }
@@ -1516,53 +1121,8 @@ function runCard(top) {
         2,
         3,
         () => {
-          $ui.alert({
-            title: "Reset progress?",
-        
-            message:
-              "Pending, Done, Failed và Logs sẽ được xoá.\nDữ liệu trong form vẫn được giữ lại.",
-        
-            actions: [
-              {
-                title: "Cancel",
-                style: "cancel"
-              },
-        
-              {
-                title: "Reset",
-                style: "destructive",
-        
-                handler: () => {
-                  const form = Object.assign(
-                    {},
-                    Core.getState().form || {}
-                  );
-        
-                  Core.resetAll();
-        
-                  Object.keys(form).forEach(
-                    key => {
-                      Core.updateForm(
-                        key,
-                        form[key]
-                      );
-                    }
-                  );
-        
-                  queueDirty = true;
-                  resultDirty = true;
-                  dashboardDirty = true;
-        
-                  Core.addLog(
-                    "Progress reset",
-                    "warn"
-                  );
-        
-                  refresh(true);
-                }
-              }
-            ]
-          });
+          Core.resetAll();
+          refresh();
         }
       )
     ]
@@ -1625,6 +1185,130 @@ function actionButton(
       }
     }
   };
+}
+
+function logCard(top) {
+  return card(
+    "logCard",
+    top,
+    190,
+    [
+      {
+        type: "label",
+
+        props: {
+          text: "Realtime Log",
+
+          textColor: $color(T.text),
+          font: $font("bold", 21)
+        },
+
+        layout: make => {
+          make.left.equalTo(18);
+          make.top.equalTo(16);
+          make.height.equalTo(28);
+        }
+      },
+
+      {
+        type: "button",
+
+        props: {
+          title: "Clear  🗑",
+
+          bgcolor: $color(
+            UI.TAB_ACTIVE_BG
+          ),
+
+          titleColor: $color(
+            "#E5E7EB"
+          ),
+
+          radius: 14,
+
+          borderWidth: 1,
+          borderColor: $color(
+            UI.CARD_BORDER
+          ),
+
+          font: $font("bold", 12)
+        },
+
+        layout: make => {
+          make.right.inset(18);
+          make.top.equalTo(16);
+
+          make.width.equalTo(96);
+          make.height.equalTo(32);
+        },
+
+        events: {
+          tapped(sender) {
+            pressFeedback(
+              sender,
+              () => {
+                Core.getState().logs = [];
+                refresh();
+              }
+            );
+          }
+        }
+      },
+
+      {
+        type: "view",
+
+        props: {
+          bgcolor: $color(
+            UI.CARD_BG_SOFT
+          ),
+
+          radius: 12,
+
+          borderWidth: 1,
+          borderColor: $rgba(
+            148,
+            163,
+            184,
+            0.08
+          )
+        },
+
+        layout: make => {
+          make.top.equalTo(56);
+          make.left.right.inset(16);
+          make.bottom.inset(12);
+        }
+      },
+
+      {
+        type: "label",
+
+        props: {
+          id: "dashLog",
+
+          text: "No logs",
+
+          textColor: $color(
+            UI.TEXT_SOFT
+          ),
+
+          font: $font(
+            "Menlo",
+            11
+          ),
+
+          lines: 0
+        },
+
+        layout: make => {
+          make.top.equalTo(64);
+          make.left.right.inset(24);
+          make.bottom.inset(18);
+        }
+      }
+    ]
+  );
 }
 
 // ============================================================
@@ -1779,21 +1463,18 @@ function dataPage() {
 }
 
 function dataPageHeight() {
-  const sec =
-    getModeSections(
-      Core.getState().mode
-    );
+  const sec = getModeSections(Core.getState().mode);
 
   let top = 128;
 
-  top += 416;
+  top += 390;
 
   if (sec.product) {
     top += 216;
   }
 
   if (sec.profile) {
-    top += 994;
+    top += 966;
   }
 
   if (sec.payment) {
@@ -1953,6 +1634,94 @@ function getWebView() {
   return $("mainWebView");
 }
 
+function emptyBrowserBlock() {
+  return {
+    type: "view",
+
+    props: {
+      bgcolor: $color(T.bg)
+    },
+
+    layout: make => {
+      make.top.left.right.bottom.equalTo(0);
+    },
+
+    views: [
+      {
+        type: "view",
+
+        props: {
+          bgcolor: $color(
+            UI.CARD_BG
+          ),
+
+          radius: 22,
+
+          borderWidth: 1,
+          borderColor: $color(
+            UI.CARD_BORDER
+          )
+        },
+
+        layout: make => {
+          make.center.equalTo();
+
+          make.left.right.inset(24);
+          make.height.equalTo(150);
+        },
+
+        views: [
+          {
+            type: "image",
+
+            props: {
+              symbol: "globe",
+              tintColor: $color(
+                "#6366F1"
+              )
+            },
+
+            layout: make => {
+              make.top.inset(24);
+              make.centerX.equalTo();
+
+              make.width.height.equalTo(42);
+            }
+          },
+
+          {
+            type: "label",
+
+            props: {
+              text:
+                "WebView chưa được tạo\nBấm RUN để bắt đầu",
+
+              textColor: $color(
+                UI.MUTED
+              ),
+
+              align: $align.center,
+
+              font: $font(
+                "bold",
+                15
+              ),
+
+              lines: 2
+            },
+
+            layout: make => {
+              make.top.inset(80);
+              make.left.right.inset(20);
+              make.height.equalTo(52);
+            }
+          }
+        ]
+      }
+    ]
+  };
+}
+
 // ============================================================
 // DATA ACTIONS
 // ============================================================
@@ -1989,9 +1758,6 @@ function dataActions(top) {
             );
 
           Core.refreshStats();
-          queueDirty = true;
-          resultDirty = true;
-          dashboardDirty = true;
 
           Core.addLog(
             "Data saved: " +
@@ -2279,6 +2045,16 @@ function area(id, title, placeholder, top, height) {
 // BROWSER / RESULT
 // ============================================================
 
+function browserPage() {
+  return page(
+    "browserPage",
+    sh - TAB_H,
+    [
+      emptyBrowserBlock()
+    ]
+  );
+}
+
 function resultPage() {
   return page(
     "resultPage",
@@ -2337,99 +2113,31 @@ function resultPage() {
 // REFRESH
 // ============================================================
 
-function refresh(force) {
+function refresh() {
   const state =
     Core.getState();
 
-  if (
-    force ||
-    tabsDirty
-  ) {
-    refreshTabs(state);
-    tabsDirty = false;
-  }
-
-  if (
-    force ||
-    dashboardDirty
-  ) {
-    refreshDashboard(state);
-    refreshStatus(state);
-    dashboardDirty = false;
-  }
-
-  if (
-    force ||
-    (
-      state.tab === "Result" &&
-      (
-        queueDirty ||
-        resultDirty
-      )
-    )
-  ) {
-    refreshQueueResult(state);
-
-    queueDirty = false;
-    resultDirty = false;
-  }
+  refreshTabs(state);
+  refreshDashboard(state);
+  refreshStatus(state);
+  refreshQueueResult(state);
 }
 
 function refreshTabs(state) {
-  const tabs = [
-    "Dashboard",
-    "Data",
-    "Browser",
-    "Result"
-  ];
+  Core.TABS.forEach(tab => {
+    const button = $("tab_" + tab);
 
-  tabs.forEach(tab => {
-    const selected =
-      state.tab === tab;
+    if (!button) return;
 
-    const container =
-      $("tabContainer_" + tab);
+    const selected = state.tab === tab;
 
-    const indicator =
-      $("tabIndicator_" + tab);
+    button.titleColor = selected
+      ? $color("#FDE047")
+      : $color("#64748B");
 
-    const icon =
-      $("tabIcon_" + tab);
-
-    const label =
-      $("tabLabel_" + tab);
-
-    if (container) {
-      container.bgcolor =
-        selected
-          ? $color(
-              UI.TAB_ACTIVE_BG
-            )
-          : $color("clear");
-    }
-
-    if (indicator) {
-      indicator.hidden =
-        !selected;
-    }
-
-    if (icon) {
-      icon.tintColor =
-        $color(
-          selected
-            ? UI.TAB_ACTIVE
-            : UI.TAB_INACTIVE
-        );
-    }
-
-    if (label) {
-      label.textColor =
-        $color(
-          selected
-            ? UI.TAB_ACTIVE
-            : UI.TAB_INACTIVE
-        );
-    }
+    button.bgcolor = selected
+      ? $color("#1E293B")
+      : $color("clear");
   });
 }
 
@@ -2443,6 +2151,13 @@ function refreshDashboard(state) {
     "modeBtn",
     modeTitle(state.mode) +
       "  ▼"
+  );
+
+  setText(
+    "curBadge",
+    state.running
+      ? "●  Running"
+      : "●  Ready"
   );
 
   setText(
@@ -2477,9 +2192,22 @@ function refreshDashboard(state) {
       state.stats.total
   );
 
+  const progressWidth =
+    Math.max(
+      1,
+      Math.floor(
+        (
+          sw -
+          CARD_X * 2 -
+          44
+        ) *
+          state.stats.percent /
+          100
+      )
+    );
+
   animateProgress(
-    state.stats.percent,
-    false
+    progressWidth
   );
 
   const current =
@@ -2520,60 +2248,57 @@ function refreshDashboard(state) {
         "00:00"
       )
   );
+
+  const logs =
+    (
+      state.logs || []
+    )
+      .slice(0, 4)
+      .map(log => {
+        return (
+          logIcon(log.type) +
+          " " +
+          log.time +
+          "  " +
+          log.text
+        );
+      })
+      .join("\n");
+
+  setText(
+    "dashLog",
+    logs || "No logs"
+  );
 }
 
 function refreshStatus(state) {
   const current =
     state.current || {};
 
-  const finished =
-    (
-      state.stats.done || 0
-    ) +
-    (
-      state.stats.failed || 0
-    );
-
-  const total =
-    state.stats.total || 0;
-
-  const status =
-    current.status ||
-    (
-      state.running
-        ? "Working"
-        : "Idle"
-    );
-
   setText(
     "bottomStatusText",
 
     (
       state.running
-        ? "Running"
-        : "Ready"
+        ? "🟢 Running"
+        : "🟢 Ready"
     ) +
-      "  •  " +
+      " • " +
       state.mode +
-      "  •  " +
-      finished +
+      " • " +
+      (
+        current.index || 0
+      ) +
       "/" +
-      total +
-      "  •  " +
-      status
+      (
+        current.total || 0
+      ) +
+      " • " +
+      (
+        current.status ||
+        "Idle"
+      )
   );
-
-  const dot =
-    $("bottomStatusDot");
-
-  if (dot) {
-    dot.bgcolor =
-      $color(
-        state.running
-          ? UI.RUN
-          : "#64748B"
-      );
-  }
 }
 
 function refreshQueueResult(state) {
@@ -2595,86 +2320,86 @@ function refreshQueueResult(state) {
       []
     );
 
-  cachedQueueResult.pendingText =
+  const pendingText =
     Core.listToAccountText(
       pending,
       state.mode
     ) || "No pending";
 
-  cachedQueueResult.doneText =
+  const doneText =
     Array.isArray(done)
       ? done
           .map(item => {
             return (
               item.text ||
-              [
-                item.email || "",
-                item.pass || ""
-              ]
-                .filter(Boolean)
-                .join(":")
-            );
-          })
-          .filter(Boolean)
-          .join("\n") ||
-        "No done"
-      : "No done";
-
-  cachedQueueResult.failedText =
-    Array.isArray(failed)
-      ? failed
-          .map(item => {
-            const account =
-              [
-                item.email || "",
-                item.pass || ""
-              ]
-                .filter(Boolean)
-                .join(":");
-
-            const reason =
-              item.reason || "";
-
-            return (
-              item.text ||
               (
-                account +
                 (
-                  reason
-                    ? "\t" + reason
-                    : ""
+                  item.email ||
+                  ""
+                ) +
+                ":" +
+                (
+                  item.pass ||
+                  ""
                 )
               )
             );
           })
           .filter(Boolean)
-          .join("\n") ||
-        "No failed"
-      : "No failed";
+          .join("\n")
+      : "";
+
+  const failedText =
+    Array.isArray(failed)
+      ? failed
+          .map(item => {
+            return (
+              item.text ||
+              (
+                (
+                  item.email ||
+                  ""
+                ) +
+                ":" +
+                (
+                  item.pass ||
+                  ""
+                ) +
+                "\t" +
+                (
+                  item.reason ||
+                  ""
+                )
+              )
+            );
+          })
+          .filter(Boolean)
+          .join("\n")
+      : "";
 
   setText(
     "queuePending",
-    cachedQueueResult.pendingText
+    pendingText
   );
 
   setText(
     "queueDone",
-    cachedQueueResult.doneText
+    doneText || "No done"
   );
 
   setText(
     "queueFailed",
-    cachedQueueResult.failedText
+    failedText || "No failed"
   );
 
   setText(
     "resultDone",
-    cachedQueueResult.doneText
+    doneText || "No done"
   );
 
   setText(
     "resultFailed",
-    cachedQueueResult.failedText
+    failedText || "No failed"
   );
 
   const logs =
@@ -2856,12 +2581,7 @@ function showModeMenu() {
                     sender,
                     () => {
                       Core.setMode(mode);
-                      
-                      queueDirty = true;
-                      resultDirty = true;
-                      dashboardDirty = true;
-                      tabsDirty = true;
-                      
+
                       Core.addLog(
                         "Mode changed: " +
                           mode,
@@ -3711,20 +3431,15 @@ function importAllColumns(
     );
 
   Core.refreshStats();
-  
-  queueDirty = true;
-  resultDirty = true;
-  dashboardDirty = true;
-  
+  refresh();
+
   Core.addLog(
     "Imported: " +
       total +
       " accounts",
     "success"
   );
-  
-  refresh();
-  
+
   $ui.toast(
     "Import OK: " + total
   );
@@ -3811,13 +3526,8 @@ function importFailToPending() {
   }
 
   Core.refreshStats();
-  
-  queueDirty = true;
-  resultDirty = true;
-  dashboardDirty = true;
-  
   refresh();
-  
+
   Core.addLog(
     "Failed imported to pending: " +
       retryTasks.length,
@@ -3957,6 +3667,31 @@ function sectionHeader(
       make.top.equalTo(top);
       make.left.equalTo(18);
       make.height.equalTo(32);
+    }
+  };
+}
+
+function miniLabel(
+  text,
+  top
+) {
+  return {
+    type: "label",
+
+    props: {
+      text: text,
+
+      textColor: $color(
+        T.muted
+      ),
+
+      font: $font("bold", 11)
+    },
+
+    layout: make => {
+      make.left.equalTo(0);
+      make.top.equalTo(top);
+      make.height.equalTo(20);
     }
   };
 }
@@ -4202,14 +3937,6 @@ function setTitle(id, text) {
   }
 }
 
-function markDataDirty() {
-  queueDirty = true;
-  resultDirty = true;
-  dashboardDirty = true;
-
-  scheduleRefresh("result");
-}
-
 // ============================================================
 // EXPORT
 // ============================================================
@@ -4221,7 +3948,5 @@ module.exports = {
   createWebView,
   destroyWebView,
   reloadWebView,
-  getWebView,
-
-  markDataDirty
+  getWebView
 };

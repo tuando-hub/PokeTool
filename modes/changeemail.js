@@ -52,10 +52,11 @@ async function clickSendMail(wv) {
 
 async function openChangeEmailLink(wv, acc, stopCheck) {
   const newEmail = String(acc.newEmail || "").trim();
+
   const imapEmail = String(
     acc.accImapEmail || acc.imapEmail || ""
   ).trim();
-  
+
   const imapPass = String(
     acc.accImapPass || acc.imapPass || ""
   ).trim();
@@ -90,7 +91,11 @@ async function openChangeEmailLink(wv, acc, stopCheck) {
     );
 
     if (!link) {
-      Core.addLog("No change mail link", "warn");
+      Core.addLog(
+        "No change mail link",
+        "warn"
+      );
+
       continue;
     }
 
@@ -99,11 +104,57 @@ async function openChangeEmailLink(wv, acc, stopCheck) {
     await Web.waitPageReady(wv, 30000);
     await Web.delay(3000);
 
-    Core.addLog("Change mail link opened", "success");
+    const pageState = await Web.evalJS(wv, `
+(() => {
+  const title = document.title || "";
+  const text = document.body?.innerText || "";
+  const url = location.href || "";
+
+  const oldLink =
+    title.includes("システムエラー") ||
+    text.includes("メールアドレス変更でエラーが発生しました") ||
+    text.includes("再度メールアドレス変更をやり直してください");
+
+  const success =
+    url.includes("/mail-change-complete/") &&
+    !oldLink;
+
+  return {
+    oldLink,
+    success,
+    title,
+    url
+  };
+})();
+    `);
+
+    if (pageState && pageState.oldLink) {
+      Core.addLog(
+        "Old change mail link",
+        "warn"
+      );
+
+      continue;
+    }
+
+    if (!pageState || !pageState.success) {
+      Core.addLog(
+        "Change mail link not confirmed",
+        "warn"
+      );
+
+      continue;
+    }
+
+    Core.addLog(
+      "Change mail success",
+      "success"
+    );
 
     return {
       ok: true,
-      link
+      link,
+      pageState
     };
   }
 
