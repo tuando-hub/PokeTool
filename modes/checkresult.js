@@ -5,6 +5,8 @@ const Session = require("../services/session");
 
 const LOGIN_URL = "https://www.pokemoncenter-online.com/login/";
 const HISTORY_URL = "https://www.pokemoncenter-online.com/lottery-history/";
+const ORDER_HISTORY_URL =
+  "https://www.pokemoncenter-online.com/order-history/";
 
 function checkStop(stopCheck) {
   if (typeof stopCheck === "function") stopCheck();
@@ -465,6 +467,325 @@ async function runCheckAccOne(acc, index, total, form, stopCheck) {
   }
 }
 
+async function runCheckOrderOne(
+  acc,
+  index,
+  total,
+  form,
+  stopCheck
+) {
+  const email = acc.email;
+  const pass = acc.pass;
+
+  const runForm = Object.assign({}, form, {
+    imapEmail: acc.imapEmail || form.imapEmail,
+    imapPass: acc.imapPass || form.imapPass,
+    productIds: acc.productIds || form.productIds
+  });
+
+  const productIds = String(runForm.productIds || "")
+    .split(/[,，\n\r\s]+/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  if (!productIds.length) {
+    return {
+      ok: false,
+      reason: "NO_PRODUCT_IDS"
+    };
+  }
+
+  let wv = null;
+
+  try {
+    checkStop(stopCheck);
+
+    Core.updateCurrent({
+      email,
+      step: "CHECK ORDER",
+      status: "Create WebView",
+      index,
+      total
+    });
+
+    wv = Web.create("about:blank");
+
+    if (!wv) {
+      throw new Error("Cannot create WebView");
+    }
+
+    wv.url = LOGIN_URL + "?t=" + Date.now();
+
+    await Web.waitPageReady(wv, 30000);
+    await Web.delay(2500);
+
+    const authRs = await Auth.loginOtpTerms({
+      wv,
+      email,
+      pass,
+      form: runForm,
+      mode: "CheckResult",
+      stopCheck,
+      index,
+      total
+    });
+
+    if (!authRs.ok) {
+      return authRs;
+    }
+
+    checkStop(stopCheck);
+
+    Core.updateCurrent({
+      email,
+      step: "ORDER HISTORY",
+      status: "Open order history",
+      index,
+      total
+    });
+
+    wv.url =
+      ORDER_HISTORY_URL +
+      "?t=" +
+      Date.now();
+
+    await Web.waitPageReady(wv, 30000);
+    await Web.delay(3000);
+
+    const rs = await fetchOrderHistory(
+      wv,
+      productIds
+    );
+
+    if (!rs || !rs.ok) {
+      return {
+        ok: false,
+        reason:
+          (rs && rs.reason) ||
+          "ORDER_HISTORY_FAIL"
+      };
+    }
+    
+    const results = rs.results || [];
+    
+    const found =
+      results.filter(x => x.found);
+    
+    const notFound =
+      results.filter(x => !x.found);
+    
+    return {
+      ok: true,
+      reason: "ORDER_STATUS_OK",
+      results,
+      found,
+      notFound
+    };
+
+  } finally {
+    await Session.cleanupAccount(
+      wv,
+      index,
+      total,
+      {
+        logout: true,
+        resetIP: true
+      }
+    );
+  }
+}
+
+function chooseCheckAccType() {
+  return new Promise(resolve => {
+    $ui.menu({
+      title: "CheckAcc",
+      items: [
+        "🎯 Check kết quả chusen",
+        "📦 Check tình trạng đơn"
+      ],
+      handler(title) {
+        resolve(title || "");
+      }
+    });
+  });
+}
+
+async function fetchOrderHistory(wv, productIds) {
+  return await Web.evalJS(
+    wv,
+`
+(() => {
+  const targetIds =
+    ${JSON.stringify(productIds || [])};
+
+  try {
+    const items = [
+      ...document.querySelectorAll(
+        ".comOrderList > li"
+      )
+    ];
+
+    const foundMap = {};
+
+    targetIds.forEach(id => {
+      foundMap[id] = [];
+    });
+
+    items.forEach(li => {
+      const imageUrls = [
+        li.querySelector(".phoBox img")
+          ?.src || ""
+      ].filter(Boolean);
+
+      const hitIds = targetIds.filter(id => {
+        const s = String(id || "").trim();
+      
+        if (!s) return false;
+      
+        return imageUrls.some(src => {
+          src = String(src || "");
+      
+          if (src.includes(s)) {
+            return true;
+          }
+      
+          const marker = "/item/";
+          const start = src.indexOf(marker);
+      
+          if (start < 0) {
+            return false;
+          }
+      
+          const rest = src.slice(
+            start + marker.length
+          );
+      
+          const imgId =
+            rest.split("/")[0] || "";
+      
+          return (
+            imgId === s ||
+            imgId.endsWith(s)
+          );
+        });
+      });
+
+      if (!hitIds.length) return;
+
+      const statusEl =
+        li.querySelector(".txtList li.on") ||
+        li.querySelector(".txtList li.current") ||
+        li.querySelector(".txtList li.finish");
+      
+      let currentStatus =
+        String(
+          statusEl?.innerText || ""
+        ).trim();
+        
+      if (!currentStatus) {
+        currentStatus =
+          [...li.querySelectorAll(".txtList li")]
+            .map(x =>
+              x.innerText.trim()
+            )
+            .filter(Boolean)
+            .join(" ");
+      }
+
+      const allStatuses = [
+        ...li.querySelectorAll(".txtList li")
+      ]
+        .map(x => String(x.innerText || "").trim())
+        .filter(Boolean);
+
+      const orderNo = String(
+        li.querySelector(".number span")
+          ?.innerText || ""
+      ).trim();
+
+      const itemName = String(
+        li.querySelector(".ttl")
+          ?.innerText || ""
+      ).trim();
+
+      const date = String(
+        li.querySelector(".time")
+          ?.childNodes?.[0]
+          ?.textContent || ""
+      ).trim();
+
+      const time = String(
+        li.querySelector(".time span")
+          ?.innerText || ""
+      ).trim();
+
+      const progressClass = String(
+        li.querySelector(".comReceiptBox")
+          ?.className || ""
+      ).trim();
+
+      const detailUrl = String(
+        li.querySelector(".comBtn a")
+          ?.href || ""
+      ).trim();
+
+      hitIds.forEach(productId => {
+        foundMap[productId].push({
+          productId,
+          orderNo,
+          itemName,
+          currentStatus,
+          allStatuses,
+          date,
+          time,
+          progressClass,
+          detailUrl,
+          imageUrls
+        });
+      });
+    });
+
+    const results = targetIds.map(productId => {
+      const matches =
+        foundMap[productId] || [];
+
+      if (!matches.length) {
+        return {
+          productId,
+          found: false,
+          result: "PRODUCT_NOT_FOUND"
+        };
+      }
+
+      const order = matches[0];
+
+      return {
+        found: true,
+        result:
+          order.currentStatus ||
+          "STATUS_UNKNOWN",
+        matchCount: matches.length,
+        ...order
+      };
+    });
+
+    return {
+      ok: true,
+      itemCount: items.length,
+      results
+    };
+
+  } catch(e) {
+    return {
+      ok: false,
+      reason: String(e.message || e)
+    };
+  }
+})()
+`
+  );
+}
+
 async function runCheckAcc(ctx) {
   const form = ctx.form || {};
   const accounts = Array.isArray(ctx.accounts) ? ctx.accounts.slice() : [];
@@ -605,14 +926,205 @@ async function run(ctx) {
   }
 
   if (type === "CheckAcc") {
-    return await runCheckAcc(ctx);
+    const subType =
+      await chooseCheckAccType();
+
+    if (
+      subType ===
+      "🎯 Check kết quả chusen"
+    ) {
+      return await runCheckAcc(ctx);
+    }
+
+    if (
+      subType ===
+      "📦 Check tình trạng đơn"
+    ) {
+      return await runCheckOrder(ctx);
+    }
   }
 
-  Core.addLog("CheckResult cancelled", "warn");
+  Core.addLog(
+    "CheckResult cancelled",
+    "warn"
+  );
+}
+
+async function runCheckOrder(ctx) {
+  const form = ctx.form || {};
+  const accounts = Array.isArray(ctx.accounts)
+    ? ctx.accounts.slice()
+    : [];
+
+  const stopCheck = ctx.stopCheck;
+
+  if (!accounts.length) {
+    $ui.alert("Không có account để check");
+    return;
+  }
+
+  const done = [];
+  const failed = [];
+
+  Core.saveJSON(
+    Core.FILE_PENDING,
+    accounts
+  );
+
+  const total = accounts.length;
+
+  while (accounts.length > 0) {
+    checkStop(stopCheck);
+
+    const acc = accounts[0];
+    const index =
+      total - accounts.length + 1;
+
+    Core.addLog(
+      "*********************",
+      "info"
+    );
+
+    Core.addLog(
+      "Start check order: " +
+        acc.email,
+      "info"
+    );
+
+    let rs;
+
+    try {
+      rs = await runCheckOrderOne(
+        acc,
+        index,
+        total,
+        form,
+        stopCheck
+      );
+    } catch (e) {
+      rs = {
+        ok: false,
+        reason: String(
+          e.message || e
+        )
+      };
+    }
+
+    accounts.shift();
+
+    if (rs && rs.ok) {
+      (rs.results || []).forEach(item => {
+        done.push({
+          ...acc,
+    
+          productId:
+            item.productId || "",
+    
+          result:
+            item.result || "UNKNOWN",
+    
+          text:
+            `${acc.email}:${acc.pass}\t` +
+            `${item.productId || ""}\t` +
+            `${item.result || "UNKNOWN"}`,
+    
+          doneAt:
+            Date.now(),
+    
+          meta:
+            item
+        });
+      });
+    
+      Core.addLog(
+        "Check order: " +
+          acc.email +
+          " / found " +
+          (rs.found || []).length +
+          " / not found " +
+          (rs.notFound || []).length,
+        "success"
+      );
+    } else {
+      const reason =
+        (rs && rs.reason) ||
+        "CHECK_ORDER_FAIL";
+
+      failed.push({
+        ...acc,
+
+        text:
+          `${acc.email}:${acc.pass}\t` +
+          reason,
+
+        reason,
+
+        failedAt:
+          Date.now(),
+
+        meta:
+          rs || {}
+      });
+
+      Core.addLog(
+        "Check order failed: " +
+          acc.email +
+          " / " +
+          reason,
+        "error"
+      );
+    }
+
+    Core.saveJSON(
+      Core.FILE_PENDING,
+      accounts
+    );
+
+    Core.saveJSON(
+      Core.FILE_DONE,
+      done
+    );
+
+    Core.saveJSON(
+      Core.FILE_FAILED,
+      failed
+    );
+
+    Core.refreshStats();
+  }
+
+  Core.updateCurrent({
+    email: "-",
+    step: "Idle",
+    status: "Check Order Finished",
+    index: total,
+    total
+  });
+
+  Core.addLog(
+    "Check Order done: " +
+      done.length +
+      " result / " +
+      failed.length +
+      " failed",
+    failed.length
+      ? "warn"
+      : "success"
+  );
+
+  $ui.alert(
+    "🎉 Check tình trạng đơn xong\n\n" +
+    "📦 Found: " +
+    done.length +
+    "\n" +
+    "❌ Failed: " +
+    failed.length
+  );
 }
 
 module.exports = {
   run,
   runCheckMail,
-  runCheckAcc
+  runCheckAcc,
+  runCheckOrder
 };

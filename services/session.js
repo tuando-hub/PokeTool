@@ -48,7 +48,7 @@ async function cleanupAccount(wv, index, total, opt) {
         "shortcuts://run-shortcut?name=" +
           encodeURIComponent("Reset IP")
       );
-      await Web.delay(6000);
+      await Web.delay(7500);
     } catch (e) {
       //
     }

@@ -82,6 +82,13 @@ function scheduleRefresh(changeType) {
     tabsDirty = true;
   }
 
+  const state = Core.getState();
+
+  if (state.tab === "Result") {
+    queueDirty = true;
+    resultDirty = true;
+  }
+
   dashboardDirty = true;
 
   if (refreshTimer) {
