@@ -31,7 +31,7 @@ async function open(wv, url, stop) {
   check(stop);
   wv.url = url;
   await Web.waitPageReady(wv, 30000);
-  await Web.delay(1500);
+  await Web.delay(2500);
 }
 
 async function waitFor(wv, script, stop, timeout = 30000) {
@@ -553,7 +553,7 @@ async function waitEntryForm(wv, stop, timeout = 30000) {
       );
     }
 
-    await Web.delay(500);
+    await Web.delay(1500);
   }
 
   throw new Error("JUMPCS_ENTRY_FORM_TIMEOUT");
@@ -601,7 +601,7 @@ async function fillEntry(wv, email, pass, stop) {
     );
   }
 
-  await Web.delay(800);
+  await Web.delay(1500);
 }
 
 async function submitEntry(wv, stop) {
@@ -2771,6 +2771,8 @@ async function purchaseProduct({
   );
 
   update(onStep,"JUMPCS_TERMS","Accept Terms");
+  
+  await Web.delay(3500);
 
   await setStoreCheckbox(
     webView,
