@@ -245,6 +245,7 @@ function blurAllInputs() {
 function modeTitle(mode) {
   if (mode === "Lottery") return "🎯 Lottery";
   if (mode === "Buy") return "🛒 Buy";
+  if (mode === "BuyJumpPlus") return "🛍 Buy Jump+";
   if (mode === "Create") return "🛠 Create";
   if (mode === "ChangeProfile") return "📝 Profile";
   if (mode === "ChangeEmail") return "📧 Change Email";
@@ -266,6 +267,12 @@ function modeMeta(mode) {
       "🛒",
       "Buy",
       "購入"
+    ],
+    
+    BuyJumpPlus: [
+      "🛍",
+      "Buy Jump+",
+      "JUMP購入"
     ],
 
     Create: [
@@ -3845,17 +3852,18 @@ function getModeSections(mode) {
       mode === "Lottery" ||
       mode === "Buy" ||
       mode === "CheckResult" ||
-      mode ===
-        "ChangeProfileOrder",
+      mode === "BuyJumpPlus" ||
+      mode === "ChangeProfileOrder",
 
     profile:
       mode === "Create" ||
       mode === "ChangeProfile" ||
-      mode ===
-        "ChangeProfileOrder",
+      mode === "BuyJumpPlus" ||
+      mode === "ChangeProfileOrder",
 
     payment:
-      mode === "Buy"
+      mode === "Buy" ||
+      mode === "BuyJumpPlus",
   };
 }
 

@@ -27,6 +27,7 @@ const THEME = {
 const MODES = [
   "Lottery",
   "Buy",
+  "BuyJumpPlus",
   "Create",
   "ChangeProfile",
   "ChangeEmail",
@@ -106,6 +107,23 @@ const MODE_FIELDS = {
     "buyQty",
     "creditOwnerList",
     "creditList"
+  ],
+  
+  BuyJumpPlus: [
+    "imapEmail",
+    "imapPass",
+    "productIds",
+    "buyQty",
+    "creditOwnerList",
+    "creditList",
+    "names",
+        "kanas",
+        "phones",
+        "postcode",
+        "pref",
+        "address1",
+        "address2",
+        "birthdate"
   ],
 
   Create: [

@@ -7,6 +7,8 @@ const CheckResult = require("./modes/checkresult");
 const ChangeProfileOrder = require("./modes/changeprofileorder");
 const Create = require("./modes/create");
 const ChangeEmail = require("./modes/changeemail");
+const Buy = require("./modes/autobuy");
+const BuyJumpPlus = require("./modes/buyjumpplus");
 
 
 let STOP_FLAG = false;
@@ -119,6 +121,26 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
+  
+  if (mode === "Buy") {
+    return await Buy.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
+  }
+  
+  if (mode === "BuyJumpPlus") {
+    return await BuyJumpPlus.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
+  }
 
   throw new Error("MODE_NOT_IMPLEMENTED_" + mode);
 }
@@ -127,62 +149,110 @@ function validateBeforeRun() {
   const s = Core.getState();
   const f = s.form || {};
   const mode = s.mode;
-
   const errors = [];
-
-  const imapEmail = String(f.imapEmail || "").trim();
-  const imapPass = String(f.imapPass || "").trim();
-  const mailList = String(f.mailList || "").trim();
-  const productIds = String(f.productIds || "").trim();
-  const buyQty = String(f.buyQty || "").trim();
-
-  const accounts = Core.parseAccounts(mailList, mode);
-
-  if (!mode) errors.push("Chưa chọn Mode");
-  if (!imapEmail) errors.push("Thiếu IMAP EMAIL");
-  if (!imapPass) errors.push("Thiếu IMAP PASSWORD");
-  if (!mailList) errors.push("Thiếu MAIL LIST");
-
+  const imapEmail =
+    String(f.imapEmail || "").trim();
+  const imapPass =
+    String(f.imapPass || "").trim();
+  const mailList =
+    String(f.mailList || "").trim();
+  const productIds =
+    String(f.productIds || "").trim();
+  const buyQty =
+    String(f.buyQty || "").trim();
+  const accounts =
+    Core.parseAccounts(mailList, mode);
+  if (!mode) {
+    errors.push("Chưa chọn Mode");
+  }
+  if (!imapEmail) {
+    errors.push("Thiếu IMAP EMAIL");
+  }
+  if (!imapPass) {
+    errors.push("Thiếu IMAP PASSWORD");
+  }
+  if (!mailList) {
+    errors.push("Thiếu MAIL LIST");
+  }
   if (mailList && accounts.length === 0) {
     errors.push("MAIL LIST sai định dạng");
   }
-
+  if (
+    mode === "Buy" ||
+    mode === "BuyJumpPlus"
+  ) {
+    const creditList =
+      String(f.creditList || "").trim();
+    const creditOwnerList =
+      String(f.creditOwnerList || "").trim();
+    if (!creditList) {
+      errors.push("Thiếu CREDIT LIST");
+    }
+    if (!creditOwnerList) {
+      errors.push("Thiếu CREDIT OWNER LIST");
+    }
+  }
   if (
     mode === "Lottery" ||
     mode === "Buy" ||
+    mode === "BuyJumpPlus" ||
     mode === "CheckResult" ||
     mode === "ChangeProfileOrder"
   ) {
-    if (!productIds) errors.push("Thiếu PRODUCT IDS");
+    if (!productIds) {
+      errors.push("Thiếu PRODUCT IDS");
+    }
   }
-
-  if (mode === "Buy") {
+  if (
+    mode === "Buy" ||
+    mode === "BuyJumpPlus"
+  ) {
     const qty = Number(buyQty);
-
-    if (!Number.isInteger(qty) || qty <= 0) {
+    if (
+      !Number.isInteger(qty) ||
+      qty <= 0
+    ) {
       errors.push("BUY QTY không hợp lệ");
     }
-
-    if (!String(f.creditOwnerList || "").trim()) {
-      errors.push("Thiếu CARD OWNER");
+  }
+  if (
+    mode === "Create" ||
+    mode === "BuyJumpPlus"
+  ) {
+    if (!String(f.names || "").trim()) {
+      errors.push("Thiếu NAMES");
     }
-
-    if (!String(f.creditList || "").trim()) {
-      errors.push("Thiếu CARD LIST");
+  
+    if (!String(f.kanas || "").trim()) {
+      errors.push("Thiếu KANAS");
+    }
+    if (
+      mode === "Create" &&
+      !String(f.phones || "").trim()
+    ) {
+      errors.push("Thiếu PHONES");
+    }
+  
+    if (!String(f.postcode || "").trim()) {
+      errors.push("Thiếu POSTCODE");
+    }
+  
+    if (!String(f.pref || "").trim()) {
+      errors.push("Thiếu PREF");
+    }
+  
+    if (!String(f.address1 || "").trim()) {
+      errors.push("Thiếu CITY");
+    }
+  
+    if (!String(f.address2 || "").trim()) {
+      errors.push("Thiếu ADDRESS");
+    }
+  
+    if (!String(f.birthdate || "").trim()) {
+      errors.push("Thiếu BIRTHDATE");
     }
   }
-
-  if (mode === "Create") {
-    if (!String(f.names || "").trim()) errors.push("Thiếu NAMES");
-    if (!String(f.kanas || "").trim()) errors.push("Thiếu KANAS");
-    if (!String(f.phones || "").trim()) errors.push("Thiếu PHONES");
-    if (!String(f.postcode || "").trim()) errors.push("Thiếu POSTCODE");
-    if (!String(f.pref || "").trim()) errors.push("Thiếu PREF");
-    if (!String(f.address1 || "").trim()) errors.push("Thiếu CITY");
-    if (!String(f.address2 || "").trim()) errors.push("Thiếu ADDRESS");
-    if (!String(f.birthdate || "").trim()) errors.push("Thiếu BIRTHDATE");
-  }
-
   if (
     mode === "ChangeProfile" ||
     mode === "ChangeProfileOrder"
@@ -196,24 +266,25 @@ function validateBeforeRun() {
       String(f.address1 || "").trim() ||
       String(f.address2 || "").trim() ||
       String(f.birthdate || "").trim();
-  
     if (!hasAnyProfile) {
       errors.push("Thiếu dữ liệu cần đổi");
     }
   }
-
   if (mode === "ChangeEmail") {
     const bad = mailList
       .split(/\r?\n/)
       .map(x => x.trim())
       .filter(Boolean)
-      .filter(line => line.split(":").length < 5);
-
+      .filter(line => {
+        return line.split(":").length < 5;
+      });
     if (bad.length > 0) {
-      errors.push("ChangeEmail cần dạng oldmail:pass:newmail:imapmail:imappass");
+      errors.push(
+        "ChangeEmail cần dạng " +
+        "oldmail:pass:newmail:imapmail:imappass"
+      );
     }
   }
-
   return errors;
 }
 
