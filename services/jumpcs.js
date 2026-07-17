@@ -1247,15 +1247,39 @@ async function submitRegistration(wv, stop) {
 async function verifyPhone(
   wv,
   phoneInfo,
+  email,
+  password,
   stop,
   onStep
 ) {
   check(stop);
-  
-  const value =
+
+  const phone =
     String(
       phoneInfo.phone || ""
     ).replace(/\D/g, "");
+
+  const pkey =
+    String(
+      phoneInfo.pkey || ""
+    ).trim();
+
+  if (!/^\d{11}$/.test(phone)) {
+    throw new Error(
+      "JUMPCS_AUTH_PHONE_INVALID_" +
+      phone
+    );
+  }
+
+  if (!pkey) {
+    throw new Error(
+      "JUMPCS_PHONE_PKEY_EMPTY"
+    );
+  }
+
+  // ======================================================
+  // 1. CHỜ TRANG NHẬP SỐ
+  // ======================================================
 
   const state =
     await waitFor(
@@ -1287,18 +1311,11 @@ async function verifyPhone(
     );
   }
 
-  // ==========================================
-  // NHẬP SỐ VÀ GỬI SMS
-  // ==========================================
+  // ======================================================
+  // 2. NHẬP SỐ VÀ GỬI SMS LẦN ĐẦU
+  // ======================================================
 
   if (state === "PHONE_READY") {
-    if (!/^\d{11}$/.test(value)) {
-      throw new Error(
-        "JUMPCS_AUTH_PHONE_INVALID_" +
-        value
-      );
-    }
-
     update(
       onStep,
       "JUMPCS_PHONE",
@@ -1320,7 +1337,7 @@ async function verifyPhone(
   }
 
   const value =
-    ${JSON.stringify(value)};
+    ${JSON.stringify(phone)};
 
   tel.focus();
 
@@ -1328,7 +1345,10 @@ async function verifyPhone(
     Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       "value"
-    ).set.call(tel, value);
+    ).set.call(
+      tel,
+      value
+    );
   } catch (_) {
     tel.value = value;
   }
@@ -1384,7 +1404,7 @@ async function verifyPhone(
       );
     }
 
-    const ready =
+    const codeReady =
       await waitFor(
         wv,
         `
@@ -1399,271 +1419,498 @@ async function verifyPhone(
         30000
       );
 
-    if (!ready) {
+    if (!codeReady) {
       throw new Error(
         "JUMPCS_SMS_CODE_PAGE_TIMEOUT"
       );
     }
   }
-
-  // ==========================================
-  // TỰ ĐỘNG LẤY OTP NORTH
-  // ==========================================
-
+  
+  // ======================================================
+  // 3. LẤY VÀ LƯU OTP LẦN ĐẦU
+  // ======================================================
+  
   update(
     onStep,
-    "JUMPCS_SMS",
-    "Wait SMS code"
+    "JUMPCS_SMS_FIRST",
+    "Wait first SMS code"
   );
-
+  
   log(
-    "Đang lấy OTP số điện thoại",
+    "Đang chờ OTP lần đầu",
     "info"
   );
-
-  const code =
+  
+  const firstOtp =
     await OtpNorth.waitOtp(
-      phoneInfo.pkey,
-      value,
+      pkey,
+      phone,
       stop
     );
-
+  
   check(stop);
-
+  
   if (
-    !code ||
+    !firstOtp ||
     !/^\d{6}$/.test(
-      String(code)
+      String(firstOtp)
     )
   ) {
     throw new Error(
-      "JUMPCS_SMS_OTP_TIMEOUT"
+      "JUMPCS_FIRST_SMS_OTP_TIMEOUT"
     );
   }
-
+  
   log(
-    "Đã lấy OTP số điện thoại: " +
-    code,
+    "Đã lưu OTP lần đầu: " +
+      firstOtp,
     "success"
   );
+  
+    // ======================================================
+    // 4. NHẬP OTP1
+    // ======================================================
+  
+    update(
+      onStep,
+      "JUMPCS_SMS_FIRST_CONFIRM",
+      "Confirm first SMS code"
+    );
+  
+    const firstFilled =
+      await Web.evalJS(
+        wv,
+        `
+  (() => {
+    const input =
+      document.querySelector("#code");
+  
+    if (!input) {
+      return {
+        ok: false,
+        reason: "NO_CODE_INPUT"
+      };
+    }
+  
+    const value =
+      ${JSON.stringify(String(firstOtp))};
+  
+    input.scrollIntoView({
+      block: "center"
+    });
+  
+    input.focus();
+  
+    try {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      ).set.call(
+        input,
+        value
+      );
+    } catch (_) {
+      input.value = value;
+    }
+  
+    [
+      "input",
+      "change",
+      "blur"
+    ].forEach(type => {
+      input.dispatchEvent(
+        new Event(type, {
+          bubbles: true
+        })
+      );
+    });
+  
+    return {
+      ok:
+        String(input.value || "") ===
+        value,
+      value:
+        String(input.value || "")
+    };
+  })();
+  `
+      );
+  
+    if (
+      !firstFilled ||
+      !firstFilled.ok
+    ) {
+      throw new Error(
+        "JUMPCS_FIRST_SMS_FILL_FAILED_" +
+        JSON.stringify(
+          firstFilled || {}
+        )
+      );
+    }
+  
+    await Web.delay(500);
+    check(stop);
+  
+    // ======================================================
+    // 5. BẤM XÁC NHẬN OTP1
+    // ======================================================
+  
+    const firstClicked =
+      await Web.evalJS(
+        wv,
+        `
+  (() => {
+    const input =
+      document.querySelector("#code");
+  
+    if (!input) {
+      return "NO_CODE_INPUT";
+    }
+  
+    const code =
+      String(
+        input.value || ""
+      ).replace(/\\D/g, "");
+  
+    if (code.length !== 6) {
+      return "CODE_NOT_COMPLETE";
+    }
+  
+    const button =
+      document.querySelector(
+        'input.block-auth-tel-certify--submit[value="確認する"]'
+      );
+  
+    if (!button) {
+      return "NO_CONFIRM_BUTTON";
+    }
+  
+    button.disabled = false;
+    button.removeAttribute(
+      "disabled"
+    );
+  
+    button.scrollIntoView({
+      block: "center"
+    });
+  
+    button.focus();
+    button.click();
+  
+    return "CLICKED";
+  })();
+  `
+      );
+  
+    if (
+      firstClicked !== "CLICKED"
+    ) {
+      throw new Error(
+        "JUMPCS_FIRST_SMS_CONFIRM_FAILED_" +
+        firstClicked
+      );
+    }
+  
+    // ======================================================
+    // 6. CHỜ OTP1 XÁC MINH XONG VỀ MYPAGE
+    // ======================================================
+  
+    const firstCompleted =
+      await waitFor(
+        wv,
+        `
+  (() => {
+    const url =
+      String(
+        location.href || ""
+      );
+  
+    const text =
+      String(
+        document.body
+          ? document.body.innerText
+          : ""
+      )
+        .replace(/\\s+/g, "")
+        .trim();
+  
+    if (
+      text.includes(
+        "確認コードが正しくありません"
+      ) ||
+      text.includes(
+        "確認コードが一致しません"
+      ) ||
+      text.includes(
+        "認証に失敗"
+      )
+    ) {
+      return {
+        done: true,
+        ok: false,
+        error:
+          text.slice(0, 500),
+        url
+      };
+    }
+  
+    const logout =
+      document.querySelector(
+        '.block-mypage--logout a[href*="logout.aspx"]'
+      );
+  
+    if (
+      logout ||
+      text.includes("マイページ") ||
+      text.includes("ログアウト")
+    ) {
+      return {
+        done: true,
+        ok: true,
+        state: "MYPAGE",
+        url
+      };
+    }
+  
+    return null;
+  })();
+  `,
+        stop,
+        30000
+      );
+  
+    if (!firstCompleted) {
+      throw new Error(
+        "JUMPCS_FIRST_SMS_MYPAGE_TIMEOUT"
+      );
+    }
+  
+    if (!firstCompleted.ok) {
+      throw new Error(
+        "JUMPCS_FIRST_SMS_CODE_INVALID_" +
+        firstCompleted.error
+      );
+    }
+  
+    log(
+      "Xác minh OTP lần đầu thành công, đã về MyPage",
+      "success"
+    );
 
-  // ==========================================
-  // NHẬP OTP VÀ BẤM XÁC NHẬN
-  // ==========================================
+  // ======================================================
+  // 3. LOGOUT JUMPCS
+  // ======================================================
 
   update(
     onStep,
-    "JUMPCS_SMS_CONFIRM",
-    "Confirm SMS code"
+    "JUMPCS_SMS_LOGOUT",
+    "Logout before requesting SMS2"
   );
 
-  const filled =
-    await Web.evalJS(
+  log(
+    "Đã gửi SMS lần đầu, đang logout JumpCS",
+    "info"
+  );
+  
+  await logoutJumpCS(
+    wv,
+    stop
+  );
+  
+  check(stop);
+  
+  update(
+    onStep,
+    "JUMPCS_SMS_WAIT",
+    "Wait 7 seconds before login again"
+  );
+  
+  log(
+    "Đợi 7 giây trước khi login lại JumpCS",
+    "info"
+  );
+  
+  await Web.delay(
+    7000
+  );
+  
+  check(stop);
+
+  check(stop);
+
+  // ======================================================
+  // 4. LOGIN LẠI JUMPCS
+  // ======================================================
+
+  update(
+    onStep,
+    "JUMPCS_SMS_LOGIN",
+    "Login again for SMS2"
+  );
+
+  log(
+    "Đang login lại JumpCS",
+    "info"
+  );
+
+  const loginResult =
+    await loginJumpCS(
       wv,
-      `
-(() => {
-  const el =
-    document.querySelector(
-      "#code"
+      email,
+      password,
+      stop
     );
 
-  if (!el) {
-    return {
-      ok: false,
-      reason: "NO_CODE_INPUT"
-    };
-  }
-
-  const value =
-    ${JSON.stringify(String(code))};
-
-  el.scrollIntoView({
-    block: "center"
-  });
-
-  el.focus();
-
-  try {
-    Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value"
-    ).set.call(el, value);
-  } catch (_) {
-    el.value = value;
-  }
-
-  [
-    "input",
-    "change",
-    "blur"
-  ].forEach(type => {
-    el.dispatchEvent(
-      new Event(type, {
-        bubbles: true
-      })
-    );
-  });
-
-  return {
-    ok:
-      String(el.value || "") ===
-      value,
-
-    value:
-      String(el.value || "")
-  };
-})();
-`
-    );
+  const loginState =
+    loginResult.state
+      ? loginResult
+      : await getPostLoginState(
+          wv,
+          stop,
+          30000
+        );
 
   if (
-    !filled ||
-    !filled.ok
+    loginState.state !==
+      "SMS_CODE_REQUIRED" &&
+    loginState.state !==
+      "PHONE_REQUIRED"
   ) {
+    if (
+      loginState.state ===
+        "LOGGED_IN" ||
+      loginState.state ===
+        "PHONE_ALREADY_VERIFIED"
+    ) {
+      return {
+        ok: true,
+        skipped: true,
+        phone,
+        pkey,
+        reason:
+          "PHONE_ALREADY_VERIFIED",
+        url:
+          loginState.url
+      };
+    }
+
     throw new Error(
-      "JUMPCS_SMS_CODE_FILL_FAILED_" +
+      "JUMPCS_SMS_RELOGIN_STATE_" +
       JSON.stringify(
-        filled || {}
+        loginState || {}
       )
     );
   }
 
-  await Web.delay(500);
-
-  const clicked =
-    await Web.evalJS(
-      wv,
-      `
-(() => {
-  const button =
-    document.querySelector(
-      'input.block-auth-tel-certify--submit[value="確認する"]'
+  // Nếu login lại quay về trang nhập số
+  if (
+    loginState.state ===
+    "PHONE_REQUIRED"
+  ) {
+    throw new Error(
+      "JUMPCS_SMS2_PHONE_REQUIRED_AGAIN"
     );
-
-  if (!button) {
-    return "NO_CONFIRM_BUTTON";
   }
 
-  button.disabled = false;
-
-  button.removeAttribute(
-    "disabled"
+  update(
+    onStep,
+    "JUMPCS_MANUAL",
+    "Waiting manual code"
   );
-
-  button.scrollIntoView({
-    block: "center"
-  });
-
-  button.focus();
-  button.click();
-
-  return "CLICKED";
-})();
-`
-    );
-
-  if (clicked !== "CLICKED") {
-    throw new Error(
-      "JUMPCS_SMS_CONFIRM_FAILED_" +
-      clicked
-    );
-  }
-
-  // ==========================================
-  // CHỜ MY PAGE
-  // ==========================================
-
-  const completed =
-    await waitFor(
-      wv,
-      `
-(() => {
-  const url =
-    String(
-      location.href || ""
-    );
-
-  const text =
-    String(
-      document.body
-        ? document.body.innerText
-        : ""
-    )
-      .replace(/\\s+/g, "")
-      .trim();
-
-  if (
-    text.includes(
-      "確認コードが正しくありません"
-    ) ||
-    text.includes(
-      "確認コードが一致しません"
-    ) ||
-    text.includes(
-      "認証に失敗"
-    )
-  ) {
-    return {
-      ok: false,
-      error:
-        text.slice(0, 500),
-      url
-    };
-  }
-
-  const logout =
-    document.querySelector(
-      '.block-mypage--logout a[href*="logout.aspx"]'
-    );
-
-  if (
-    logout ||
-    text.includes("マイページ") ||
-    text.includes("ログアウト")
-  ) {
-    return {
-      ok: true,
-      state: "MYPAGE",
-      url,
-      title:
-        document.title || ""
-    };
-  }
-
-  return null;
-})();
-`,
-      stop,
-      30000
-    );
-
-  if (!completed) {
-    throw new Error(
-      "JUMPCS_SMS_MYPAGE_TIMEOUT"
-    );
-  }
-
-  if (!completed.ok) {
-    throw new Error(
-      "JUMPCS_SMS_CODE_INVALID_" +
-      completed.error
-    );
-  }
-
+  
   log(
-    "Xác minh SMS thành công, đã tới My Page",
+    "Đang chờ nhập tay OTP",
+    "info"
+  );
+  
+  const completed =
+  await waitFor(
+    wv,
+  `
+  (() => {
+  
+    const input =
+      document.querySelector("#code");
+  
+    if(!input)
+      return null;
+  
+    const value =
+      String(input.value || "")
+        .replace(/\\D/g,"");
+  
+    if(value.length !== 6)
+      return null;
+  
+    const button =
+      document.querySelector(
+        'input.block-auth-tel-certify--submit[value="確認する"]'
+      );
+  
+    if(!button)
+      return null;
+  
+    button.disabled = false;
+    button.removeAttribute("disabled");
+  
+    button.click();
+  
+    return "CLICKED";
+  
+  })();
+  `,
+  stop,
+  10 * 60 * 1000
+  );
+  
+  if(!completed){
+    throw new Error(
+      "JUMPCS_MANUAL_CODE_TIMEOUT"
+    );
+  }
+  
+  const mypage =
+  await waitFor(
+  wv,
+  `
+  (() => {
+  
+    const logout =
+      document.querySelector(
+        '.block-mypage--logout a[href*="logout.aspx"]'
+      );
+  
+    if(logout){
+      return {
+        ok:true,
+        url:location.href
+      };
+    }
+  
+    return null;
+  
+  })();
+  `,
+  stop,
+  30000
+  );
+  
+  if(!mypage){
+    throw new Error(
+      "JUMPCS_MANUAL_CONFIRM_TIMEOUT"
+    );
+  }
+  
+  log(
+    "OTP xác nhận thành công",
     "success"
   );
-
+  
   return {
-    ok: true,
-    phone: value,
-    code:
-      String(code),
-    state:
-      completed.state,
-    url:
-      completed.url
+    ok:true,
+    phone,
+    pkey,
+    url:mypage.url
   };
 }
   
@@ -2981,7 +3228,93 @@ async function purchaseProduct({
   };
 }
 
-async function run({
+  // ======================================================
+  // LOGOUT JUMP CS
+  // ======================================================
+  
+async function logoutJumpCS(
+  wv,
+  stop
+) {
+  check(stop);
+
+  log(
+    "Đang logout JumpCS",
+    "info"
+  );
+
+  await open(
+    wv,
+    MENU_URL,
+    stop
+  );
+
+  const result =
+    await Web.evalJS(
+      wv,
+      `
+(() => {
+  const link =
+    document.querySelector(
+      '.block-mypage--logout a[href*="logout.aspx"]'
+    );
+
+  if (!link) {
+    return "NO_LOGOUT_LINK";
+  }
+
+  link.scrollIntoView({
+    block: "center"
+  });
+
+  link.click();
+
+  return "CLICKED";
+})();
+`
+    );
+
+  if (
+    result ===
+    "NO_LOGOUT_LINK"
+  ) {
+    log(
+      "JumpCS đã logout sẵn",
+      "success"
+    );
+
+    return {
+      ok: true,
+      skipped: true,
+      reason:
+        "ALREADY_LOGGED_OUT"
+    };
+  }
+
+  if (
+    result !== "CLICKED"
+  ) {
+    throw new Error(
+      "JUMPCS_LOGOUT_FAILED_" +
+      result
+    );
+  }
+
+  log(
+    "Đã bấm Logout JumpCS",
+    "success"
+  );
+
+  return {
+    ok: true
+  };
+}
+  
+// ======================================================
+// CREATE JUMP CS ACCOUNT
+// ======================================================
+
+async function createAccount({
   email,
   pass,
   imapEmail,
@@ -2994,145 +3327,184 @@ async function run({
   address1,
   address2,
   birthdate,
-  productIds,
-  buyQty,
-  creditList,
-  creditOwnerList,
   webView,
   stopCheck,
   onStep
 }) {
   if (!webView) {
-    throw new Error("JUMPCS_NO_WEBVIEW");
+    throw new Error(
+      "JUMPCS_NO_WEBVIEW"
+    );
   }
 
-  const password = String(pass || "");
-  let phone = "";
+  const password =
+    String(pass || "");
+
+  const pendingPhone =
+    String(phones || "")
+      .replace(/\D/g, "");
+
+  const city =
+    String(address1 || "");
+
+  const address =
+    String(address2 || "");
+
   let phoneOrder = null;
-  const city = String(address1 || "");
-  const address = String(address2 || "");
-  const ids = String(productIds || "");
-  const quantity = String(buyQty || "1");
-  const credit = String(creditList || "");
-  const creditOwner = String(creditOwnerList || "");
-  
-  if (!webView) throw new Error("JUMPCS_NO_WEBVIEW");
+  let phoneResult = null;
 
-  update(onStep, "JUMPCS_API", "Login Jump+ API");
-  log("Đang lấy Store URL", "info");
+  // SĐT trong pending dùng cho profile
+  if (!pendingPhone) {
+    throw new Error(
+      "JUMPCS_PENDING_PHONE_EMPTY"
+    );
+  }
 
-  const store = await API.loginAndGetStoreUrl({
-    email,
-    password
-  });
+  update(
+    onStep,
+    "JUMPCS_MENU",
+    "Open JumpCS registration"
+  );
 
-  update(onStep, "JUMPCS_MENU", "Open JumpCS Menu");
-  log("Đang mở trang đăng ký mới", "info");
-  
+  log(
+    "Đang mở trang đăng ký JumpCS",
+    "info"
+  );
+
   await openNewMemberPage(
     webView,
     stopCheck
   );
-  
-  update(onStep, "JUMPCS_WAIT", "Wait Entry Form");
-  
+
+  update(
+    onStep,
+    "JUMPCS_WAIT",
+    "Wait entry form"
+  );
+
   await waitEntryForm(
     webView,
     stopCheck
   );
-  
-  log("Đã mở form đăng ký mới", "success");
 
-  update(onStep, "JUMPCS_FILL", "Fill Email And Password");
-  await fillEntry(webView, email, password, stopCheck);
-
-  update(onStep, "JUMPCS_SEND", "Send Confirmation Mail");
-  log("Đang gửi mail xác nhận", "info");
-  await submitEntry(webView, stopCheck);
-
-  update(onStep, "JUMPCS_REGISTER", "Wait Registration Page");
-  await waitRegistrationPage(webView, stopCheck);
-
-  update(onStep, "JUMPCS_OTP", "Wait Confirmation Code");
-  log("Đang lấy OTP JumpCS", "info");
-
-  const otp = await OTP.getOtpDirect(
-    imapEmail,
-    imapPass,
-    email,
-    "JumpCSCreate"
-  );
-  
-  if (!otp || !/^\d{6}$/.test(String(otp))) {
-    throw new Error("JUMPCS_OTP_NOT_FOUND");
-  }
-
-  log("Đã lấy OTP JumpCS", "success");
-  
   update(
     onStep,
-    "JUMPCS_PHONE",
-    "Get phone number"
-  );
-  
-  log(
-    "Đang lấy số điện thoại",
-    "info"
-  );
-  
-  phoneOrder =
-    await OtpNorth.orderPhone(
-      stopCheck
-    );
-  
-  phone =
-    String(
-      phoneOrder.phone || ""
-    );
-  
-  log(
-    "Đã lấy số điện thoại: " +
-      phone,
-    "success"
+    "JUMPCS_FILL",
+    "Fill email and password"
   );
 
-  update(onStep, "JUMPCS_PROFILE", "Fill Registration Profile");
-
-  const profile = await fillRegistration(
+  await fillEntry(
     webView,
-    {
-      otp,
-      password,
-      names,
-      kanas,
-      phone,
-      postcode,
-      pref,
-      city,
-      address,
-      birthdate
-    },
+    email,
+    password,
     stopCheck
   );
 
-  update(onStep, "JUMPCS_CONFIRM", "Open Confirmation Page");
-  log("Đã nhập profile, mở màn hình xác nhận", "success");
-  await Web.delay(4000);
+  update(
+    onStep,
+    "JUMPCS_SEND",
+    "Send confirmation mail"
+  );
+
+  await submitEntry(
+    webView,
+    stopCheck
+  );
+
+  update(
+    onStep,
+    "JUMPCS_REGISTER",
+    "Wait registration page"
+  );
+
+  await waitRegistrationPage(
+    webView,
+    stopCheck
+  );
+
+  update(
+    onStep,
+    "JUMPCS_OTP",
+    "Wait confirmation code"
+  );
+
+  log(
+    "Đang lấy OTP JumpCS",
+    "info"
+  );
+
+  const otp =
+    await OTP.getOtpDirect(
+      imapEmail,
+      imapPass,
+      email,
+      "JumpCSCreate"
+    );
+
+  if (
+    !otp ||
+    !/^\d{6}$/.test(
+      String(otp)
+    )
+  ) {
+    throw new Error(
+      "JUMPCS_OTP_NOT_FOUND"
+    );
+  }
+
+  log(
+    "Đã lấy OTP JumpCS",
+    "success"
+  );
+
+  update(
+    onStep,
+    "JUMPCS_PROFILE",
+    "Fill registration profile"
+  );
+
+  // Profile dùng SĐT từ pending
+  const profile =
+    await fillRegistration(
+      webView,
+      {
+        otp,
+        password,
+        names,
+        kanas,
+        phone:
+          pendingPhone,
+        postcode,
+        pref,
+        city,
+        address,
+        birthdate
+      },
+      stopCheck
+    );
+
+  update(
+    onStep,
+    "JUMPCS_CONFIRM",
+    "Open confirmation page"
+  );
+
+  await Web.delay(
+    4000
+  );
 
   await submitConfirmation(
     webView,
     stopCheck
   );
-  
+
   const registrationState =
     await getRegistrationState(
       webView,
       stopCheck,
       30000
     );
-  
-  let phoneResult = null;
-  
+
   if (
     registrationState.state ===
     "CONFIRM_PAGE"
@@ -3142,26 +3514,12 @@ async function run({
       "JUMPCS_REGISTER",
       "Submit registration"
     );
-  
+
     await submitRegistration(
       webView,
       stopCheck
     );
-  
-    update(
-      onStep,
-      "JUMPCS_PHONE",
-      "Verify phone number"
-    );
-  
-    phoneResult =
-      await verifyPhone(
-        webView,
-        phoneOrder,
-        stopCheck,
-        onStep
-      );
-  
+
   } else if (
     registrationState.state ===
     "PROFILE_ERROR"
@@ -3169,14 +3527,9 @@ async function run({
     update(
       onStep,
       "JUMPCS_MAIL_CHECK",
-      "Check completed registration mail"
+      "Check registration mail"
     );
-  
-    log(
-      "Profile trả về lỗi, đang kiểm tra mail hoàn tất đăng ký",
-      "warn"
-    );
-  
+
     const registeredResult =
       await OTP.getOtpDirect(
         imapEmail,
@@ -3184,26 +3537,27 @@ async function run({
         email,
         "JumpCSRegistered"
       );
-    
+
     check(stopCheck);
-    
+
     const registered =
       String(
         registeredResult || ""
-      ).trim() === "REGISTERED";
-    
+      ).trim() ===
+      "REGISTERED";
+
     if (!registered) {
       throw new Error(
         "JUMPCS_PROFILE_ERROR_AND_NOT_REGISTERED_" +
         registrationState.preview
       );
     }
-    
+
     log(
-      "Phát hiện mail hoàn tất đăng ký, chuyển qua login",
+      "Phát hiện account đã được tạo, đang login lại",
       "success"
     );
-    
+
     const loginResult =
       await loginJumpCS(
         webView,
@@ -3211,7 +3565,7 @@ async function run({
         password,
         stopCheck
       );
-    
+
     const postLogin =
       loginResult.state
         ? loginResult
@@ -3220,126 +3574,301 @@ async function run({
             stopCheck,
             30000
           );
-    
+
     if (
       postLogin.state ===
-      "PHONE_REQUIRED"
-    ) {
-      update(
-        onStep,
-        "JUMPCS_PHONE",
-        "Verify phone number"
-      );
-    
-      phoneResult =
-        await verifyPhone(
-          webView,
-          phoneOrder,
-          stopCheck,
-          onStep
-        );
-    
-    } else if (
-      postLogin.state ===
-      "SMS_CODE_REQUIRED"
-    ) {
-      update(
-        onStep,
-        "JUMPCS_PHONE",
-        "Verify phone number"
-      );
-    
-      phoneResult =
-        await verifyPhone(
-          webView,
-          phoneOrder,
-          stopCheck,
-          onStep
-        );
-    
-    } else if (
-      postLogin.state === "LOGGED_IN" ||
+        "LOGGED_IN" ||
       postLogin.state ===
         "PHONE_ALREADY_VERIFIED"
     ) {
-      log(
-        "Đã login và số điện thoại đã xác minh, chuyển sang mua hàng",
-        "success"
-      );
-    
       phoneResult = {
         ok: true,
         skipped: true,
         reason:
           "PHONE_ALREADY_VERIFIED",
-        url: postLogin.url
-      };
-    
-    } else {
-      throw new Error(
-        "JUMPCS_UNEXPECTED_POST_LOGIN_STATE_" +
-        JSON.stringify(postLogin)
-      );
-    }
-  }
-  
-    update(
-      onStep,
-      "JUMPCS_PURCHASE",
-      "Start Product Purchase"
-    );
-  
-    const purchaseResult=
-      await purchaseProduct({
-        webView,
-        storeUrl:store.url,
-        ids,
-        quantity,
-        credit,
-        creditOwner,
-        stopCheck,
-        onStep
-      });
-  
-    if(purchaseResult.cancelled){
-      return {
-        ok:false,
-        cancelled:true,
-        otp,
-        profile,
-        phoneResult,
-        purchaseResult,
-        storeUrl:store.url,
-        subscrToken:store.token
+        url:
+          postLogin.url
       };
     }
-  
-    update(
-      onStep,
-      purchaseResult.ok
-        ? "JUMPCS_DONE"
-        : "JUMPCS_PENDING",
-      purchaseResult.ok
-        ? "Order Successful"
-        : "Order Result Pending"
-    );
-  
-    return {
-      ok:purchaseResult.ok,
-      pending:purchaseResult.pending,
-      otp,
-      profile,
-      phoneResult,
-      purchaseResult,
-      orderId:purchaseResult.orderId,
-      storeUrl:store.url,
-      subscrToken:store.token,
-      nextBearer:store.nextBearer,
-      url:purchaseResult.url
-    };
   }
 
-module.exports={
-  run,
+  if (!phoneResult) {
+    update(
+      onStep,
+      "JUMPCS_PHONE",
+      "Get verification phone"
+    );
+
+    log(
+      "Đang lấy số điện thoại xác minh",
+      "info"
+    );
+
+    // SĐT API chỉ lấy ở bước xác minh
+    phoneOrder =
+      await OtpNorth.orderPhone(
+        stopCheck
+      );
+
+    log(
+      "Đã lấy số xác minh: " +
+      String(
+        phoneOrder.phone || ""
+      ),
+      "success"
+    );
+
+    update(
+      onStep,
+      "JUMPCS_PHONE",
+      "Verify phone number"
+    );
+
+    phoneResult =
+      await verifyPhone(
+        webView,
+        phoneOrder,
+        email,
+        password,
+        stopCheck,
+        onStep
+      );
+  }
+
+  update(
+    onStep,
+    "JUMPCS_LOGOUT",
+    "Logout JumpCS"
+  );
+
+  const logoutResult =
+    await logoutJumpCS(
+      webView,
+      stopCheck
+    );
+
+  update(
+    onStep,
+    "JUMPCS_CREATE_DONE",
+    "JumpCS account created"
+  );
+
+  log(
+    "Tạo account JumpCS hoàn tất: " +
+    email,
+    "success"
+  );
+
+  return {
+    ok: true,
+    otp,
+    profile,
+    phoneOrder,
+    phoneResult,
+    logoutResult
+  };
+}
+
+// ======================================================
+// BUY JUMP CS
+// ======================================================
+
+async function buyAccount({
+  email,
+  pass,
+  productIds,
+  buyQty,
+  creditList,
+  creditOwnerList,
+  webView,
+  stopCheck,
+  onStep
+}) {
+  if (!webView) {
+    throw new Error(
+      "JUMPCS_NO_WEBVIEW"
+    );
+  }
+
+  const password =
+    String(pass || "");
+
+  const ids =
+    String(productIds || "");
+
+  const quantity =
+    String(buyQty || "1");
+
+  const credit =
+    String(creditList || "");
+
+  const creditOwner =
+    String(
+      creditOwnerList || ""
+    );
+
+    // ======================================================
+    // JUMP+ API: LOGIN → LẤY STORE URL → LOGOUT
+    // ======================================================
+  
+    update(
+      onStep,
+      "JUMPPLUS_STORE_URL",
+      "Get JumpCS Store URL"
+    );
+  
+    log(
+      "Đang dùng Jump+ API lấy Store URL",
+      "info"
+    );
+  
+    const storeResult =
+      await API.loginAndGetStoreUrl({
+        email,
+        password
+      });
+  
+    check(stopCheck);
+  
+    const url =
+      String(
+        storeResult &&
+        storeResult.url
+          ? storeResult.url
+          : ""
+      ).trim();
+  
+    if (!url) {
+      throw new Error(
+        "JUMPCS_STORE_URL_EMPTY"
+      );
+    }
+  
+    if (
+      !/[?&]subscr_token=/.test(url)
+    ) {
+      throw new Error(
+        "JUMPCS_STORE_URL_NO_TOKEN_" +
+        url
+      );
+    }
+  
+    log(
+      "Đã lấy Store URL và logout Jump+ API",
+      "success"
+    );
+
+  update(
+    onStep,
+    "JUMPCS_LOGIN",
+    "Login JumpCS"
+  );
+
+  const loginResult =
+    await loginJumpCS(
+      webView,
+      email,
+      password,
+      stopCheck
+    );
+
+  const loginState =
+    loginResult.state
+      ? loginResult
+      : await getPostLoginState(
+          webView,
+          stopCheck,
+          30000
+        );
+
+  if (
+    loginState.state !==
+      "LOGGED_IN" &&
+    loginState.state !==
+      "PHONE_ALREADY_VERIFIED" &&
+    !loginResult.alreadyLoggedIn
+  ) {
+    throw new Error(
+      "JUMPCS_BUY_LOGIN_STATE_" +
+      JSON.stringify(
+        loginState
+      )
+    );
+  }
+
+  update(
+    onStep,
+    "JUMPCS_PURCHASE",
+    "Start product purchase"
+  );
+
+  const purchaseResult =
+    await purchaseProduct({
+      webView,
+      storeUrl: url,
+      ids,
+      quantity,
+      credit,
+      creditOwner,
+      stopCheck,
+      onStep
+    });
+
+  if (
+    !purchaseResult.ok &&
+    !purchaseResult.pending
+  ) {
+    throw new Error(
+      "JUMPCS_PURCHASE_NOT_SUCCESSFUL"
+    );
+  }
+
+  update(
+    onStep,
+    "JUMPCS_LOGOUT",
+    "Logout JumpCS"
+  );
+
+  const logoutResult =
+    await logoutJumpCS(
+      webView,
+      stopCheck
+    );
+
+  update(
+    onStep,
+    purchaseResult.ok
+      ? "JUMPCS_DONE"
+      : "JUMPCS_PENDING",
+    purchaseResult.ok
+      ? "Order successful"
+      : "Order result pending"
+  );
+
+  return {
+    ok:
+      purchaseResult.ok,
+
+    pending:
+      purchaseResult.pending,
+
+    purchaseResult,
+
+    orderId:
+      purchaseResult.orderId,
+
+    url:
+      purchaseResult.url,
+
+    logoutResult
+  };
+}
+
+module.exports = {
+  createAccount,
+  buyAccount,
+
+  loginJumpCS,
+  logoutJumpCS,
   purchaseProduct
 };

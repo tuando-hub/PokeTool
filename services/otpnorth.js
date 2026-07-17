@@ -6,10 +6,10 @@ const API_BASE =
   "https://northdinhjpn.online/api";
 
 const API_USERNAME =
-  "Hongden";
+  "Tuann1";
 
 const API_PASSWORD =
-  "111111";
+  "123123";
 
 const POLL_INTERVAL =
   3000;
@@ -17,7 +17,16 @@ const POLL_INTERVAL =
 const POLL_TIMEOUT =
   5 * 60 * 1000;
 
-const HISTORY_LIMIT = 5;
+const HISTORY_LIMIT =
+  5;
+
+const ORDER_MAX_RETRY =
+  3;
+
+// Cache riêng cho từng username
+const TOKEN_CACHE_KEY =
+  "north_token_" +
+  API_USERNAME;
 
 // ======================================================
 // TOKEN
@@ -25,9 +34,16 @@ const HISTORY_LIMIT = 5;
 
 let accessToken =
   $cache.get(
-    "north_token"
+    TOKEN_CACHE_KEY
   ) || "";
 
+// Xóa cache cũ từng dùng chung
+$cache.remove(
+  "north_token"
+);
+
+// ======================================================
+// UTILS
 // ======================================================
 
 function checkStop(fn) {
@@ -39,42 +55,33 @@ function checkStop(fn) {
 }
 
 function delay(ms) {
-  return new Promise(
-    resolve => {
-      $delay(
-        ms / 1000,
-        resolve
-      );
-    }
-  );
+  return new Promise(resolve => {
+    $delay(
+      ms / 1000,
+      resolve
+    );
+  });
 }
 
-function getStatusCode(
-  res
-) {
+function getStatusCode(res) {
   try {
     return Number(
-      res.response
-        .statusCode
+      res.response.statusCode
     );
   } catch (_) {
     return 0;
   }
 }
 
-function normalizePhone(
-  phone
-) {
+function normalizePhone(value) {
   return String(
-    phone || ""
+    value || ""
   )
     .replace(/\D/g, "")
     .trim();
 }
 
-function extractOtp(
-  item
-) {
+function extractOtp(item) {
   if (!item) {
     return "";
   }
@@ -105,6 +112,28 @@ function extractOtp(
     : "";
 }
 
+function requestHeaders() {
+  return {
+    Accept: "*/*",
+    "Cache-Control":
+      "no-cache",
+    Pragma:
+      "no-cache"
+  };
+}
+
+// ======================================================
+// RESET TOKEN
+// ======================================================
+
+function resetToken() {
+  accessToken = "";
+
+  $cache.remove(
+    TOKEN_CACHE_KEY
+  );
+}
+
 // ======================================================
 // LOGIN
 // ======================================================
@@ -120,6 +149,10 @@ async function login(
     !force
   ) {
     return accessToken;
+  }
+
+  if (force) {
+    resetToken();
   }
 
   const url =
@@ -139,19 +172,18 @@ async function login(
   const res =
     await $http.get({
       url,
-      timeout: 20
+      timeout: 20,
+      header:
+        requestHeaders()
     });
 
   const data =
     res.data;
 
   if (
-    getStatusCode(
-      res
-    ) !== 200 ||
+    getStatusCode(res) !== 200 ||
     !data ||
-    data.status !==
-      "success"
+    data.status !== "success"
   ) {
     throw new Error(
       "OTPNORTH_LOGIN_FAILED"
@@ -160,7 +192,12 @@ async function login(
 
   accessToken =
     String(
-      data.token || ""
+      data.token ||
+      (
+        data.data &&
+        data.data.token
+      ) ||
+      ""
     ).trim();
 
   if (!accessToken) {
@@ -170,15 +207,20 @@ async function login(
   }
 
   $cache.set(
-    "north_token",
+    TOKEN_CACHE_KEY,
     accessToken
+  );
+
+  console.log(
+    "[OTPNORTH] LOGIN OK:",
+    API_USERNAME
   );
 
   return accessToken;
 }
 
 // ======================================================
-// HISTORY
+// GET HISTORY
 // ======================================================
 
 async function getHistory(
@@ -187,39 +229,55 @@ async function getHistory(
 ) {
   checkStop(stopCheck);
 
-  const token =
-    await login(
-      stopCheck
-    );
+  try {
+    const token =
+      await login(
+        stopCheck
+      );
 
-  const url =
-    API_BASE +
-    "/getHistory" +
-    "?token=" +
-    encodeURIComponent(
-      token
-    ) +
-    "&t=" +
-    Date.now();
+    const url =
+      API_BASE +
+      "/getHistory" +
+      "?token=" +
+      encodeURIComponent(
+        token
+      ) +
+      "&t=" +
+      Date.now();
 
-  const res =
-    await $http.get({
-      url,
-      timeout: 20
-    });
+    const res =
+      await $http.get({
+        url,
+        timeout: 20,
+        header:
+          requestHeaders()
+      });
 
-  const data =
-    res.data;
+    const data =
+      res.data;
 
-  if (
-    getStatusCode(
-      res
-    ) !== 200 ||
-    !data ||
-    data.status !==
-      "success"
-  ) {
+    if (
+      getStatusCode(res) !== 200 ||
+      !data ||
+      data.status !== "success"
+    ) {
+      throw new Error(
+        "OTPNORTH_HISTORY_RESPONSE_FAILED"
+      );
+    }
+
+    return Array.isArray(
+      data.history
+    )
+      ? data.history
+      : [];
+
+  } catch (error) {
     if (retry) {
+      console.log(
+        "[OTPNORTH] HISTORY RETRY"
+      );
+
       resetToken();
 
       await login(
@@ -234,85 +292,141 @@ async function getHistory(
     }
 
     throw new Error(
-      "OTPNORTH_HISTORY_FAILED"
+      "OTPNORTH_HISTORY_FAILED_" +
+      String(
+        error &&
+        error.message
+          ? error.message
+          : error
+      )
     );
   }
-
-  return Array.isArray(
-    data.history
-  )
-    ? data.history
-    : [];
 }
 
 // ======================================================
-// ORDER
+// ORDER — RETRY TỐI ĐA 3 LẦN
 // ======================================================
 
 async function order(
   stopCheck,
-  retry = true
+  maxRetry = ORDER_MAX_RETRY
 ) {
-  checkStop(stopCheck);
+  let lastError = null;
 
-  const token =
-    await login(
-      stopCheck
-    );
-
-  const url =
-    API_BASE +
-    "/order" +
-    "?token=" +
-    encodeURIComponent(
-      token
-    ) +
-    "&serviceId=335" +
-    "&khoType=yma" +
-    "&t=" +
-    Date.now();
-
-  const res =
-    await $http.get({
-      url,
-      timeout: 20
-    });
-
-  const data =
-    res.data;
-
-  if (
-    getStatusCode(
-      res
-    ) !== 200 ||
-    !data ||
-    data.status !==
-      "success"
+  for (
+    let attempt = 1;
+    attempt <= maxRetry;
+    attempt++
   ) {
-    if (retry) {
+    checkStop(stopCheck);
+
+    try {
+      if (attempt > 1) {
+        resetToken();
+
+        await login(
+          stopCheck,
+          true
+        );
+      }
+
+      const token =
+        await login(
+          stopCheck
+        );
+
+      const url =
+        API_BASE +
+        "/order" +
+        "?token=" +
+        encodeURIComponent(
+          token
+        ) +
+        "&serviceId=335" +
+        "&khoType=yma" +
+        "&t=" +
+        Date.now();
+
+      console.log(
+        "[OTPNORTH] ORDER " +
+        attempt +
+        "/" +
+        maxRetry
+      );
+
+      const res =
+        await $http.get({
+          url,
+          timeout: 20,
+          header:
+            requestHeaders()
+        });
+
+      const data =
+        res.data;
+
+      if (
+        getStatusCode(res) === 200 &&
+        data &&
+        data.status === "success"
+      ) {
+        console.log(
+          "[OTPNORTH] ORDER OK"
+        );
+
+        return data;
+      }
+
+      throw new Error(
+        "ORDER_RESPONSE_FAILED_" +
+        getStatusCode(res)
+      );
+
+    } catch (error) {
+      lastError = error;
+
+      console.log(
+        "[OTPNORTH] ORDER ERROR:",
+        String(
+          error &&
+          error.message
+            ? error.message
+            : error
+        )
+      );
+
       resetToken();
 
-      await login(
-        stopCheck,
-        true
-      );
+      if (
+        attempt < maxRetry
+      ) {
+        console.log(
+          "[OTPNORTH] RETRY SAU 3 GIÂY"
+        );
 
-      return order(
-        stopCheck,
-        false
-      );
+        await delay(
+          POLL_INTERVAL
+        );
+      }
     }
-
-    throw new Error(
-      "OTPNORTH_ORDER_FAILED"
-    );
   }
 
-  return data;
+  throw new Error(
+    "OTPNORTH_ORDER_FAILED_AFTER_" +
+    maxRetry +
+    "_RETRIES_" +
+    String(
+      lastError &&
+      lastError.message
+        ? lastError.message
+        : lastError ||
+          "UNKNOWN"
+    )
+  );
 }
 
 // ======================================================
-// WAIT PENDING
+// WAIT PHONE
 // ======================================================
 
 async function waitPending(
@@ -321,62 +435,105 @@ async function waitPending(
   const started =
     Date.now();
 
+  let attempt = 0;
+
   while (
-    Date.now() -
-      started <
+    Date.now() - started <
     POLL_TIMEOUT
   ) {
     checkStop(stopCheck);
+
+    attempt++;
+
+    console.log(
+      "[OTPNORTH] CHECK PHONE:",
+      attempt
+    );
 
     const history =
       await getHistory(
         stopCheck
       );
 
-    const item =
-      history
-        .slice(
-          0,
-          HISTORY_LIMIT
-        )
-        .find(row => {
-          if (!row) {
-            return false;
-          }
-    
-          const status =
-            String(
-              row.trangThai || ""
-            ).trim();
-    
-          const phone =
-            normalizePhone(
-              row.sdt
-            );
-    
-          return (
-            status ===
-              "Đang chờ SMS..." &&
-            /^\d{11}$/.test(phone)
-          );
-        });
+    const firstItems =
+      history.slice(
+        0,
+        HISTORY_LIMIT
+      );
 
-    if (
-      item &&
-      item.sdt
-    ) {
-      return {
-        pkey:
+    const item =
+      firstItems.find(row => {
+        if (!row) {
+          return false;
+        }
+
+        const status =
           String(
-            item.pkey ||
-              ""
-          ),
-        sdt:
-          normalizePhone(
-            item.sdt
-          ),
-        item
-      };
+            row.trangThai || ""
+          ).trim();
+
+        const rawPhone =
+          String(
+            row.sdt || ""
+          ).trim();
+
+        return (
+          status ===
+            "Đang chờ SMS..." &&
+          rawPhone &&
+          rawPhone !==
+            "Đang xin số..."
+        );
+      });
+
+    if (item) {
+      const phone =
+        normalizePhone(
+          item.sdt
+        );
+
+      if (phone) {
+        console.log(
+          "[OTPNORTH] FOUND PHONE:",
+          phone
+        );
+
+        return {
+          phone,
+          sdt: phone,
+
+          pkey:
+            String(
+              item.pkey || ""
+            ),
+
+          item
+        };
+      }
+    }
+
+    const requesting =
+      firstItems.find(row => {
+        return (
+          row &&
+          String(
+            row.trangThai || ""
+          ).trim() ===
+            "Đang chờ SMS..."
+        );
+      });
+
+    if (requesting) {
+      console.log(
+        "[OTPNORTH] WAIT SERVER:",
+        String(
+          requesting.sdt || ""
+        )
+      );
+    } else {
+      console.log(
+        "[OTPNORTH] ORDER CHƯA XUẤT HIỆN"
+      );
     }
 
     await delay(
@@ -399,50 +556,57 @@ async function waitOtp(
   const started =
     Date.now();
 
-  phone =
+  const targetPhone =
     normalizePhone(
       phone
     );
 
+  let attempt = 0;
+
   while (
-    Date.now() -
-      started <
+    Date.now() - started <
     POLL_TIMEOUT
   ) {
     checkStop(stopCheck);
+
+    attempt++;
+
+    console.log(
+      "[OTPNORTH] CHECK OTP:",
+      attempt
+    );
 
     const history =
       await getHistory(
         stopCheck
       );
 
-    const item =
-      history
-        .slice(
-          0,
-          HISTORY_LIMIT
-        )
-        .find(row => {
-          if (!row) {
-            return false;
-          }
+    let item = null;
 
-          if (
-            pkey &&
-            String(
-              row.pkey ||
-                ""
-            ) === pkey
-          ) {
-            return true;
-          }
-
+    if (pkey) {
+      item =
+        history.find(row => {
           return (
-            normalizePhone(
-              row.sdt
-            ) === phone
+            row &&
+            String(
+              row.pkey || ""
+            ) ===
+              String(pkey)
           );
         });
+    }
+
+    if (!item) {
+      item =
+        history.find(row => {
+          return (
+            row &&
+            normalizePhone(
+              row.sdt
+            ) === targetPhone
+          );
+        });
+    }
 
     if (item) {
       const otp =
@@ -451,24 +615,26 @@ async function waitOtp(
         );
 
       if (otp) {
+        console.log(
+          "[OTPNORTH] FOUND OTP:",
+          otp
+        );
+
         return otp;
       }
 
       const status =
         String(
-          item.trangThai ||
-            ""
+          item.trangThai || ""
         ).trim();
 
       if (
-        status ===
-          "Đã hủy" ||
-        status ===
-          "Hết hạn"
+        status === "Đã hủy" ||
+        status === "Hết hạn"
       ) {
         throw new Error(
           "OTPNORTH_" +
-            status
+          status
         );
       }
     }
@@ -488,13 +654,26 @@ async function waitOtp(
 async function orderPhone(
   stopCheck
 ) {
+  checkStop(stopCheck);
+
+  console.log(
+    "[OTPNORTH] START ORDER PHONE"
+  );
+
   await order(
     stopCheck
   );
 
-  // Order xong chờ server cấp số
+  console.log(
+    "[OTPNORTH] ORDER DONE"
+  );
+
   await delay(
     POLL_INTERVAL
+  );
+
+  console.log(
+    "[OTPNORTH] START WAIT PHONE"
   );
 
   const pending =
@@ -504,27 +683,22 @@ async function orderPhone(
 
   if (
     !pending ||
-    !pending.sdt
+    !pending.phone
   ) {
     throw new Error(
       "OTPNORTH_NO_PHONE"
     );
   }
 
-  const phone =
-    normalizePhone(
-      pending.sdt
-    );
-
-  if (!/^\d{11}$/.test(phone)) {
-    throw new Error(
-      "OTPNORTH_INVALID_PHONE_" +
-      phone
-    );
-  }
+  console.log(
+    "[OTPNORTH] PHONE READY:",
+    pending.phone
+  );
 
   return {
-    phone,
+    phone:
+      pending.phone,
+
     pkey:
       String(
         pending.pkey || ""
@@ -533,36 +707,21 @@ async function orderPhone(
 }
 
 // ======================================================
-// GET PHONE + OTP
+// ORDER + GET PHONE + OTP
 // ======================================================
 
 async function getPhoneAndOtp(
   stopCheck
 ) {
-  await order(
-    stopCheck
-  );
-
-  // order xong đợi 3 giây
-  await delay(
-    POLL_INTERVAL
-  );
-
-  const pending =
-    await waitPending(
+  const phoneInfo =
+    await orderPhone(
       stopCheck
     );
 
-  if (!pending) {
-    throw new Error(
-      "OTPNORTH_NO_PHONE"
-    );
-  }
-
   const otp =
     await waitOtp(
-      pending.pkey,
-      pending.sdt,
+      phoneInfo.pkey,
+      phoneInfo.phone,
       stopCheck
     );
 
@@ -574,21 +733,298 @@ async function getPhoneAndOtp(
 
   return {
     phone:
-      pending.sdt,
+      phoneInfo.phone,
+
     otp,
+
     pkey:
-      pending.pkey
+      phoneInfo.pkey
   };
 }
 
-// ======================================================
+async function getSms2(
+  pkey,
+  stopCheck,
+  retry = true
+) {
+  checkStop(stopCheck);
 
-function resetToken() {
-  accessToken = "";
-  $cache.remove(
-    "north_token"
+  const targetPkey =
+    String(pkey || "")
+      .trim();
+
+  if (!targetPkey) {
+    throw new Error(
+      "OTPNORTH_SMS2_PKEY_EMPTY"
+    );
+  }
+
+  try {
+    const token =
+      await login(stopCheck);
+
+    const url =
+      API_BASE +
+      "/getSms2" +
+      "?token=" +
+      encodeURIComponent(token) +
+      "&pkey=" +
+      encodeURIComponent(
+        targetPkey
+      ) +
+      "&t=" +
+      Date.now();
+
+    const res =
+      await $http.get({
+        url,
+        timeout: 20,
+        header:
+          requestHeaders()
+      });
+
+    const data =
+      res.data;
+
+    if (
+      getStatusCode(res) !== 200 ||
+      !data ||
+      data.status !== "success"
+    ) {
+      throw new Error(
+        "GET_SMS2_FAILED"
+      );
+    }
+
+    console.log(
+      "[OTPNORTH] GET SMS2 OK"
+    );
+
+    return true;
+
+  } catch (error) {
+    if (retry) {
+      resetToken();
+
+      await login(
+        stopCheck,
+        true
+      );
+
+      return getSms2(
+        pkey,
+        stopCheck,
+        false
+      );
+    }
+
+    throw new Error(
+      "OTPNORTH_GET_SMS2_FAILED_" +
+      String(
+        error &&
+        error.message
+          ? error.message
+          : error
+      )
+    );
+  }
+}
+
+async function waitOtpSms2(
+  pkey,
+  stopCheck
+) {
+  await getSms2(
+    pkey,
+    stopCheck
+  );
+
+  return await waitOtp(
+    pkey,
+    "",
+    stopCheck
   );
 }
+
+async function waitOtpNew(
+  pkey,
+  phone,
+  oldOtp,
+  stopCheck
+) {
+  const started =
+    Date.now();
+
+  const targetPkey =
+    String(pkey || "")
+      .trim();
+
+  const targetPhone =
+    normalizePhone(phone);
+
+  const previousOtp =
+    String(oldOtp || "")
+      .trim();
+
+  let attempt = 0;
+
+  while (
+    Date.now() - started <
+    POLL_TIMEOUT
+  ) {
+    checkStop(stopCheck);
+
+    attempt++;
+
+    console.log(
+      "[OTPNORTH] CHECK SMS2 OTP:",
+      attempt
+    );
+
+    try {
+      const history =
+        await getHistory(
+          stopCheck
+        );
+
+      let item = null;
+
+      if (targetPkey) {
+        item =
+          history.find(row => {
+            return (
+              row &&
+              String(
+                row.pkey || ""
+              ).trim() ===
+                targetPkey
+            );
+          });
+      }
+
+      if (!item && targetPhone) {
+        item =
+          history.find(row => {
+            return (
+              row &&
+              normalizePhone(
+                row.sdt
+              ) === targetPhone
+            );
+          });
+      }
+
+      if (item) {
+        const otp =
+          extractOtp(item);
+
+        console.log(
+          "[OTPNORTH] SMS2 HISTORY:",
+          JSON.stringify({
+            pkey:
+              item.pkey || "",
+            phone:
+              item.sdt || "",
+            status:
+              item.trangThai || "",
+            otp:
+              otp || ""
+          })
+        );
+
+        // Chỉ nhận OTP đủ 6 số
+        // và khác OTP lần đầu
+        if (
+          /^\d{6}$/.test(otp) &&
+          (
+            !previousOtp ||
+            otp !== previousOtp
+          )
+        ) {
+          console.log(
+            "[OTPNORTH] FOUND SMS2 OTP:",
+            otp
+          );
+
+          return otp;
+        }
+
+        const status =
+          String(
+            item.trangThai || ""
+          ).trim();
+
+        if (
+          status === "Đã hủy" ||
+          status === "Hết hạn"
+        ) {
+          throw new Error(
+            "OTPNORTH_" +
+            status
+          );
+        }
+
+        if (!otp) {
+          console.log(
+            "[OTPNORTH] SMS2 OTP CHƯA CẬP NHẬT"
+          );
+        } else if (
+          otp === previousOtp
+        ) {
+          console.log(
+            "[OTPNORTH] VẪN LÀ OTP CŨ:",
+            otp
+          );
+        } else {
+          console.log(
+            "[OTPNORTH] OTP CHƯA HỢP LỆ:",
+            otp
+          );
+        }
+      } else {
+        console.log(
+          "[OTPNORTH] CHƯA TÌM THẤY SMS2 HISTORY"
+        );
+      }
+
+    } catch (error) {
+      const reason =
+        String(
+          error &&
+          error.message
+            ? error.message
+            : error
+        );
+
+      // Stop hoặc trạng thái kết thúc thì ném lỗi
+      if (
+        reason.includes("Đã hủy") ||
+        reason.includes("Hết hạn") ||
+        reason === "__STOP__"
+      ) {
+        throw error;
+      }
+
+      // History chưa cập nhật hoặc request tạm lỗi:
+      // không dừng flow, tiếp tục poll
+      console.log(
+        "[OTPNORTH] SMS2 HISTORY RETRY:",
+        reason
+      );
+    }
+
+    await delay(
+      POLL_INTERVAL
+    );
+  }
+
+  return null;
+}
+
+
+// ======================================================
+// EXPORT
+// ======================================================
 
 module.exports = {
   login,
@@ -597,6 +1033,8 @@ module.exports = {
   getHistory,
   waitPending,
   waitOtp,
+  waitOtpNew,
+  getSms2,
   getPhoneAndOtp,
   resetToken
 };

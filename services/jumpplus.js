@@ -2138,47 +2138,39 @@ async function cancelSubscription(
 })();
   `);
 
-  if (opened === "NO_PRODUCT") {
-    const state = await Web.evalJS(wv, `
-(() => {
-  const text = String(
-    document.body
-      ? document.body.innerText
-      : ""
-  )
-    .replace(/\\s+/g, "")
-    .trim();
-
-  return {
-    alreadyCancelled:
-      !text.includes("定期購読中") &&
-      !text.includes(
-        "定期購読を解約する"
-      ),
-
-    url: location.href
-  };
-})();
-    `);
-
-    if (
-      state &&
-      state.alreadyCancelled
-    ) {
-      log(
-        "Gói tháng đã được huỷ trước đó",
-        "success"
+  if (
+    opened === "NO_PRODUCT" ||
+    opened === "NO_CANCEL_START_BUTTON"
+  ) {
+    const currentUrl =
+      String(
+        await Web.evalJS(
+          wv,
+          "location.href || ''"
+        ) || ""
       );
-
-      return {
-        ok: true,
-        skipped: true,
-        reason: "ALREADY_CANCELLED",
-        url: state.url
-      };
-    }
+  
+    log(
+      opened === "NO_PRODUCT"
+        ? "Không tìm thấy gói cần huỷ, tiếp tục flow"
+        : "Không tìm thấy nút huỷ, tiếp tục flow",
+      "success"
+    );
+  
+    return {
+      ok: true,
+      skipped: true,
+  
+      reason:
+        opened === "NO_PRODUCT"
+          ? "NO_ACTIVE_PRODUCT"
+          : "NO_CANCEL_BUTTON",
+  
+      url:
+        currentUrl
+    };
   }
-
+  
   if (opened !== "CLICKED") {
     throw new Error(
       "JUMP_CANCEL_OPEN_FAILED_" +
@@ -2401,8 +2393,251 @@ async function cancelSubscription(
   return completed;
 }
 
+// ======================================================
+// LOGIN EXISTING ACCOUNT ONLY
+// DÙNG CHO FLOW BUY JUMP+
+// ======================================================
+
+async function loginOnly({
+  email,
+  password,
+  stopCheck,
+  onStep,
+  retryCount = 0
+}) {
+  let wv = null;
+  let completed = false;
+
+  const update = (
+    step,
+    status
+  ) => {
+    checkStop(stopCheck);
+
+    if (
+      typeof onStep ===
+      "function"
+    ) {
+      onStep(
+        step,
+        status
+      );
+    }
+  };
+
+  try {
+    update(
+      "OPEN",
+      "Open Jump+"
+    );
+
+    log(
+      "Mở trang Jump+ để login",
+      "info"
+    );
+
+    wv =
+      Web.create(
+        HOME_URL
+      );
+
+    if (!wv) {
+      throw new Error(
+        "JUMP_WEBVIEW_CREATE_FAILED"
+      );
+    }
+
+    await Web.waitPageReady(
+      wv,
+      30000
+    );
+
+    await Web.delay(
+      1500
+    );
+
+    update(
+      "LOGIN",
+      "Open login popup"
+    );
+
+    try {
+      await openLoginPopup(
+        wv,
+        stopCheck
+      );
+
+      log(
+        "Đã mở popup đăng nhập",
+        "success"
+      );
+
+    } catch (error) {
+      const reason =
+        String(
+          error &&
+          error.message
+            ? error.message
+            : error
+        );
+
+      if (
+        reason !==
+        "JUMP_LOGIN_BUTTON_NOT_FOUND"
+      ) {
+        throw error;
+      }
+
+      if (
+        retryCount >= 1
+      ) {
+        throw new Error(
+          "JUMP_LOGIN_BUTTON_NOT_FOUND_AFTER_RETRY"
+        );
+      }
+
+      update(
+        "SESSION",
+        "Logout old session"
+      );
+
+      log(
+        "Phát hiện session cũ, đang logout",
+        "warn"
+      );
+
+      try {
+        await Session.ensureJumpLoggedOut(
+          wv
+        );
+      } catch (logoutError) {
+        log(
+          "Logout session cũ lỗi: " +
+          String(
+            logoutError.message ||
+            logoutError
+          ),
+          "warn"
+        );
+      }
+
+      update(
+        "CLEAR",
+        "Clear old session"
+      );
+
+      try {
+        await Session.clearJumpSession(
+          wv
+        );
+      } catch (clearError) {
+        log(
+          "Clear session cũ lỗi: " +
+          String(
+            clearError.message ||
+            clearError
+          ),
+          "warn"
+        );
+      }
+
+      try {
+        Web.destroy();
+      } catch (_) {
+        //
+      }
+
+      wv = null;
+
+      update(
+        "RESET IP",
+        "Reset network"
+      );
+
+      try {
+        await Session.resetIP();
+      } catch (_) {
+        //
+      }
+
+      log(
+        "Chạy lại login sau khi clear session",
+        "info"
+      );
+
+      return await loginOnly({
+        email,
+        password,
+        stopCheck,
+        onStep,
+        retryCount:
+          retryCount + 1
+      });
+    }
+
+    update(
+      "LOGIN",
+      "Login existing account"
+    );
+
+    await loginAccount(
+      wv,
+      email,
+      password,
+      stopCheck
+    );
+
+    log(
+      "Login Jump+ thành công: " +
+      email,
+      "success"
+    );
+
+    completed = true;
+
+    return {
+      ok: true,
+      webView: wv
+    };
+
+  } finally {
+    if (
+      wv &&
+      !completed
+    ) {
+      log(
+        "Login Jump+ lỗi, đang clear session",
+        "warn"
+      );
+
+      try {
+        await Session.clearJumpSession(
+          wv,
+          stopCheck
+        );
+      } catch (_) {
+        //
+      }
+
+      try {
+        Web.destroy();
+      } catch (_) {
+        //
+      }
+
+      try {
+        await Session.resetIP();
+      } catch (_) {
+        //
+      }
+    }
+  }
+}
+
 module.exports = {
   registerAccount,
+  loginOnly,
+
   openLoginPopup,
   openSignupForm,
   fillSignupForm,
