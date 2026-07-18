@@ -115,15 +115,23 @@ async function loginJumpCS(
     "ALREADY_LOGGED_IN"
   ) {
     log(
-      "JumpCS đã login sẵn",
-      "success"
+      "Phát hiện JumpCS đã login, đang logout",
+      "warn"
     );
-
-    return {
-      ok: true,
-      alreadyLoggedIn: true,
-      url: pageState.url
-    };
+  
+    await logoutJumpCS(
+      wv,
+      stop
+    );
+  
+    check(stop);
+  
+    return await loginJumpCS(
+      wv,
+      email,
+      password,
+      stop
+    );
   }
 
   const filled = await Web.evalJS(
