@@ -320,27 +320,7 @@ async function runCreateFlow({
       );
     }
 
-    // ==========================================
-    // 3. LOGOUT JUMP+
-    // ==========================================
-
-    updateCurrent(
-      acc,
-      index,
-      total,
-      "JUMPPLUS_LOGOUT",
-      "Logout Jump+"
-    );
-
-    await Session
-      .clearJumpSession(
-        webView,
-        stopCheck
-      );
-
-    checkStop(
-      stopCheck
-    );
+    
 
     // ==========================================
     // 4. TẠO ACCOUNT JUMPCS
@@ -497,8 +477,6 @@ async function runBuyFlow({
   stopCheck
 }) {
   let webView = null;
-
-  let jumpPlusResult = null;
   let jumpCSResult = null;
 
   try {
@@ -510,66 +488,40 @@ async function runBuyFlow({
     await askJumpConfig();
 
     // ==========================================
-    // 1. LOGIN JUMP+
+    // 1. TẠO WEBVIEW CHO JUMPCS
+    // KHÔNG LOGIN JUMP+ BẰNG WEBVIEW
     // ==========================================
 
     updateCurrent(
       acc,
       index,
       total,
-      "JUMPPLUS_LOGIN",
-      "Login Jump+"
+      "WEBVIEW",
+      "Create WebView"
     );
 
-    jumpPlusResult =
-      await JumpPlus.registerAccount({
-        email:
-          acc.email,
-
-        password:
-          acc.pass,
-
-        imapEmail:
-          acc.imapEmail,
-
-        imapPass:
-          acc.imapPass,
-
-        credit:
-          acc.creditList,
-
-        creditOwner:
-          acc.creditOwnerList,
-
-        stopCheck,
-
-        buyOnly: true,
-
-        onStep:
-          createStepHandler(
-            acc,
-            index,
-            total
-          )
-      });
-
-    if (
-      !jumpPlusResult ||
-      !jumpPlusResult.ok
-    ) {
-      throw new Error(
-        "JUMPPLUS_LOGIN_FAILED"
-      );
-    }
-
-    webView =
-      jumpPlusResult.webView;
-
+    webView = Web.create(
+      "https://jumpcs.shueisha.co.jp/shop/customer/menu.aspx"
+    );
+    
     if (!webView) {
       throw new Error(
-        "JUMPPLUS_NO_WEBVIEW"
+        "JUMPCS_WEBVIEW_CREATE_FAILED"
       );
     }
+    
+    await Web.waitPageReady(
+      webView,
+      30000
+    );
+    
+    await Web.delay(
+      1500
+    );
+    
+    checkStop(
+      stopCheck
+    );
 
     // ==========================================
     // 2. LOGIN API + LẤY STORE URL
@@ -677,7 +629,6 @@ async function runBuyFlow({
         jumpCSResult.orderId ||
         "",
 
-      jumpPlusResult,
       jumpCSResult
     };
 
