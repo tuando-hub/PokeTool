@@ -846,179 +846,110 @@ async function waitOtpSms2(
   );
 }
 
-async function waitOtpNew(
-  pkey,
-  phone,
-  oldOtp,
+async function waitSms2(
   stopCheck
 ) {
-  const started =
-    Date.now();
 
-  const targetPkey =
-    String(pkey || "")
-      .trim();
-
-  const targetPhone =
-    normalizePhone(phone);
-
-  const previousOtp =
-    String(oldOtp || "")
-      .trim();
-
-  let attempt = 0;
-
-  while (
-    Date.now() - started <
-    POLL_TIMEOUT
-  ) {
-    checkStop(stopCheck);
-
-    attempt++;
-
-    console.log(
-      "[OTPNORTH] CHECK SMS2 OTP:",
-      attempt
+  const pkey =
+    String(
+      $cache.get(
+        "north_sms2_pkey"
+      ) || ""
     );
 
-    try {
-      const history =
-        await getHistory(
-          stopCheck
-        );
+  const otp1 =
+    String(
+      $cache.get(
+        "north_sms1_otp"
+      ) || ""
+    );
 
-      let item = null;
-
-      if (targetPkey) {
-        item =
-          history.find(row => {
-            return (
-              row &&
-              String(
-                row.pkey || ""
-              ).trim() ===
-                targetPkey
-            );
-          });
-      }
-
-      if (!item && targetPhone) {
-        item =
-          history.find(row => {
-            return (
-              row &&
-              normalizePhone(
-                row.sdt
-              ) === targetPhone
-            );
-          });
-      }
-
-      if (item) {
-        const otp =
-          extractOtp(item);
-
-        console.log(
-          "[OTPNORTH] SMS2 HISTORY:",
-          JSON.stringify({
-            pkey:
-              item.pkey || "",
-            phone:
-              item.sdt || "",
-            status:
-              item.trangThai || "",
-            otp:
-              otp || ""
-          })
-        );
-
-        // Chỉ nhận OTP đủ 6 số
-        // và khác OTP lần đầu
-        if (
-          /^\d{6}$/.test(otp) &&
-          (
-            !previousOtp ||
-            otp !== previousOtp
-          )
-        ) {
-          console.log(
-            "[OTPNORTH] FOUND SMS2 OTP:",
-            otp
-          );
-
-          return otp;
-        }
-
-        const status =
-          String(
-            item.trangThai || ""
-          ).trim();
-
-        if (
-          status === "Đã hủy" ||
-          status === "Hết hạn"
-        ) {
-          throw new Error(
-            "OTPNORTH_" +
-            status
-          );
-        }
-
-        if (!otp) {
-          console.log(
-            "[OTPNORTH] SMS2 OTP CHƯA CẬP NHẬT"
-          );
-        } else if (
-          otp === previousOtp
-        ) {
-          console.log(
-            "[OTPNORTH] VẪN LÀ OTP CŨ:",
-            otp
-          );
-        } else {
-          console.log(
-            "[OTPNORTH] OTP CHƯA HỢP LỆ:",
-            otp
-          );
-        }
-      } else {
-        console.log(
-          "[OTPNORTH] CHƯA TÌM THẤY SMS2 HISTORY"
-        );
-      }
-
-    } catch (error) {
-      const reason =
-        String(
-          error &&
-          error.message
-            ? error.message
-            : error
-        );
-
-      // Stop hoặc trạng thái kết thúc thì ném lỗi
-      if (
-        reason.includes("Đã hủy") ||
-        reason.includes("Hết hạn") ||
-        reason === "__STOP__"
-      ) {
-        throw error;
-      }
-
-      // History chưa cập nhật hoặc request tạm lỗi:
-      // không dừng flow, tiếp tục poll
-      console.log(
-        "[OTPNORTH] SMS2 HISTORY RETRY:",
-        reason
-      );
-    }
-
-    await delay(
-      POLL_INTERVAL
+  if (!pkey) {
+    throw new Error(
+      "SMS2_NO_PKEY"
     );
   }
 
-  return null;
+  const start =
+    Date.now();
+
+  //
+  // đợi getSms2 success
+  //
+
+  while (
+    Date.now() - start <
+    2 * 60 * 1000
+  ) {
+
+    checkStop(stopCheck);
+
+    try {
+
+      const ok =
+        await getSms2(
+          pkey,
+          stopCheck
+        );
+
+      if (ok) {
+        break;
+      }
+
+    } catch (_) {
+    }
+
+    await delay(3000);
+  }
+
+  //
+  // history
+  //
+
+  while (
+    Date.now() - start <
+    2 * 60 * 1000
+  ) {
+
+    checkStop(stopCheck);
+
+    const history =
+      await getHistory(
+        stopCheck
+      );
+
+    const row =
+      history.find(
+        x =>
+          String(
+            x.pkey || ""
+          ) === pkey
+      );
+
+    if (row) {
+
+      const otp =
+        extractOtp(
+          row
+        );
+
+      if (
+        /^\d{6}$/.test(
+          otp
+        ) &&
+        otp !== otp1
+      ) {
+
+        return otp;
+      }
+    }
+
+    await delay(3000);
+  }
+
+  throw new Error(
+    "SMS2_TIMEOUT"
+  );
 }
 
 
@@ -1033,7 +964,7 @@ module.exports = {
   getHistory,
   waitPending,
   waitOtp,
-  waitOtpNew,
+  waitSms2,
   getSms2,
   getPhoneAndOtp,
   resetToken

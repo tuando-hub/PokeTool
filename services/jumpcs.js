@@ -1254,31 +1254,193 @@ async function verifyPhone(
 ) {
   check(stop);
 
+  const info =
+    phoneInfo || {};
+
   const phone =
     String(
-      phoneInfo.phone || ""
+      info.phone || ""
     ).replace(/\D/g, "");
 
   const pkey =
     String(
-      phoneInfo.pkey || ""
+      info.pkey || ""
     ).trim();
 
-  if (!/^\d{11}$/.test(phone)) {
-    throw new Error(
-      "JUMPCS_AUTH_PHONE_INVALID_" +
-      phone
+  // ======================================================
+  // HÀM CHỜ NGƯỜI DÙNG NHẬP OTP2
+  // ======================================================
+
+  async function confirmManualOtp2() {
+    update(
+      onStep,
+      "JUMPCS_MANUAL",
+      "Waiting manual SMS2 code"
     );
+
+    log(
+      "Đang chờ nhập tay OTP2",
+      "info"
+    );
+
+    const completed =
+      await waitFor(
+        wv,
+        `
+(() => {
+  const input =
+    document.querySelector("#code");
+
+  if (!input) {
+    return null;
   }
 
-  if (!pkey) {
-    throw new Error(
-      "JUMPCS_PHONE_PKEY_EMPTY"
+  const value =
+    String(
+      input.value || ""
+    ).replace(/\\D/g, "");
+
+  if (value.length !== 6) {
+    return null;
+  }
+
+  const button =
+    document.querySelector(
+      'input.block-auth-tel-certify--submit[value="確認する"]'
     );
+
+  if (!button) {
+    return null;
+  }
+
+  if (
+    button.dataset.jsboxClicked ===
+    "1"
+  ) {
+    return "CLICKED";
+  }
+
+  button.disabled = false;
+  button.removeAttribute(
+    "disabled"
+  );
+
+  button.scrollIntoView({
+    block: "center"
+  });
+
+  button.focus();
+
+  button.dataset.jsboxClicked =
+    "1";
+
+  button.click();
+
+  return "CLICKED";
+})();
+`,
+        stop,
+        10 * 60 * 1000
+      );
+
+    if (
+      completed !== "CLICKED"
+    ) {
+      throw new Error(
+        "JUMPCS_MANUAL_CODE_TIMEOUT"
+      );
+    }
+
+    const mypage =
+      await waitFor(
+        wv,
+        `
+(() => {
+  const url =
+    String(
+      location.href || ""
+    );
+
+  const text =
+    String(
+      document.body
+        ? document.body.innerText
+        : ""
+    )
+      .replace(/\\s+/g, "")
+      .trim();
+
+  if (
+    text.includes(
+      "確認コードが正しくありません"
+    ) ||
+    text.includes(
+      "確認コードが一致しません"
+    ) ||
+    text.includes(
+      "認証に失敗"
+    )
+  ) {
+    return {
+      done: true,
+      ok: false,
+      error:
+        text.slice(0, 500),
+      url
+    };
+  }
+
+  const logout =
+    document.querySelector(
+      '.block-mypage--logout a[href*="logout.aspx"]'
+    );
+
+  if (
+    logout ||
+    text.includes("マイページ") ||
+    text.includes("ログアウト")
+  ) {
+    return {
+      done: true,
+      ok: true,
+      url
+    };
+  }
+
+  return null;
+})();
+`,
+        stop,
+        30000
+      );
+
+    if (!mypage) {
+      throw new Error(
+        "JUMPCS_MANUAL_CONFIRM_TIMEOUT"
+      );
+    }
+
+    if (!mypage.ok) {
+      throw new Error(
+        "JUMPCS_SECOND_SMS_CODE_INVALID_" +
+        mypage.error
+      );
+    }
+
+    log(
+      "OTP2 xác nhận thành công",
+      "success"
+    );
+
+    return {
+      ok: true,
+      url:
+        mypage.url
+    };
   }
 
   // ======================================================
-  // 1. CHỜ TRANG NHẬP SỐ
+  // 1. KIỂM TRA TRẠNG THÁI HIỆN TẠI
   // ======================================================
 
   const state =
@@ -1298,6 +1460,15 @@ async function verifyPhone(
     return "PHONE_READY";
   }
 
+  const logout =
+    document.querySelector(
+      '.block-mypage--logout a[href*="logout.aspx"]'
+    );
+
+  if (logout) {
+    return "ALREADY_VERIFIED";
+  }
+
   return null;
 })();
 `,
@@ -1312,20 +1483,81 @@ async function verifyPhone(
   }
 
   // ======================================================
-  // 2. NHẬP SỐ VÀ GỬI SMS LẦN ĐẦU
+  // 2. ĐÃ VERIFY HOÀN TOÀN
   // ======================================================
 
-  if (state === "PHONE_READY") {
-    update(
-      onStep,
-      "JUMPCS_PHONE",
-      "Send phone verification code"
+  if (
+    state ===
+    "ALREADY_VERIFIED"
+  ) {
+    return {
+      ok: true,
+      skipped: true,
+      reason:
+        "PHONE_ALREADY_VERIFIED",
+      url:
+        String(wv.url || "")
+    };
+  }
+
+  // ======================================================
+  // 3. ĐANG Ở #code
+  // ĐÂY LÀ MÀN HÌNH SMS2
+  // KHÔNG ORDER SĐT, KHÔNG LẤY OTP1
+  // ======================================================
+
+  if (
+    state ===
+    "CODE_READY"
+  ) {
+    log(
+      "Phát hiện màn hình OTP2, bỏ qua SMS1",
+      "success"
     );
 
-    const sent =
-      await Web.evalJS(
-        wv,
-        `
+    const secondResult =
+      await confirmManualOtp2();
+
+    return {
+      ...secondResult,
+      skippedFirstSms: true,
+      phone:
+        phone || "",
+      pkey:
+        pkey || ""
+    };
+  }
+
+  // ======================================================
+  // 4. ĐANG Ở MÀN HÌNH NHẬP SĐT
+  // PHẢI LÀM ĐẦY ĐỦ SMS1
+  // ======================================================
+
+  if (
+    !/^\d{11}$/.test(phone)
+  ) {
+    throw new Error(
+      "JUMPCS_AUTH_PHONE_INVALID_" +
+      phone
+    );
+  }
+
+  if (!pkey) {
+    throw new Error(
+      "JUMPCS_PHONE_PKEY_EMPTY"
+    );
+  }
+
+  update(
+    onStep,
+    "JUMPCS_PHONE",
+    "Send phone verification code"
+  );
+
+  const sent =
+    await Web.evalJS(
+      wv,
+      `
 (() => {
   const tel =
     document.querySelector(
@@ -1338,6 +1570,10 @@ async function verifyPhone(
 
   const value =
     ${JSON.stringify(phone)};
+
+  tel.scrollIntoView({
+    block: "center"
+  });
 
   tel.focus();
 
@@ -1382,6 +1618,7 @@ async function verifyPhone(
   }
 
   button.disabled = false;
+
   button.removeAttribute(
     "disabled"
   );
@@ -1390,24 +1627,27 @@ async function verifyPhone(
     block: "center"
   });
 
+  button.focus();
   button.click();
 
   return "CLICKED";
 })();
 `
-      );
+    );
 
-    if (sent !== "CLICKED") {
-      throw new Error(
-        "JUMPCS_SMS_SEND_FAILED_" +
-        sent
-      );
-    }
+  if (
+    sent !== "CLICKED"
+  ) {
+    throw new Error(
+      "JUMPCS_SMS_SEND_FAILED_" +
+      sent
+    );
+  }
 
-    const codeReady =
-      await waitFor(
-        wv,
-        `
+  const codeReady =
+    await waitFor(
+      wv,
+      `
 (() => Boolean(
   document.querySelector("#code") &&
   document.querySelector(
@@ -1415,41 +1655,40 @@ async function verifyPhone(
   )
 ))();
 `,
-        stop,
-        30000
-      );
+      stop,
+      30000
+    );
 
-    if (!codeReady) {
-      throw new Error(
-        "JUMPCS_SMS_CODE_PAGE_TIMEOUT"
-      );
-    }
+  if (!codeReady) {
+    throw new Error(
+      "JUMPCS_SMS_CODE_PAGE_TIMEOUT"
+    );
   }
-  
+
   // ======================================================
-  // 3. LẤY VÀ LƯU OTP LẦN ĐẦU
+  // 5. LẤY OTP1
   // ======================================================
-  
+
   update(
     onStep,
     "JUMPCS_SMS_FIRST",
     "Wait first SMS code"
   );
-  
+
   log(
-    "Đang chờ OTP lần đầu",
+    "Đang chờ OTP1",
     "info"
   );
-  
+
   const firstOtp =
     await OtpNorth.waitOtp(
       pkey,
       phone,
       stop
     );
-  
+
   check(stop);
-  
+
   if (
     !firstOtp ||
     !/^\d{6}$/.test(
@@ -1460,297 +1699,303 @@ async function verifyPhone(
       "JUMPCS_FIRST_SMS_OTP_TIMEOUT"
     );
   }
-  
+
   log(
-    "Đã lưu OTP lần đầu: " +
+    "Đã lấy OTP1: " +
       firstOtp,
     "success"
   );
   
-    // ======================================================
-    // 4. NHẬP OTP1
-    // ======================================================
+  $cache.set(
+    "north_sms2_pkey",
+    pkey
+  );
   
-    update(
-      onStep,
-      "JUMPCS_SMS_FIRST_CONFIRM",
-      "Confirm first SMS code"
-    );
-  
-    const firstFilled =
-      await Web.evalJS(
-        wv,
-        `
-  (() => {
-    const input =
-      document.querySelector("#code");
-  
-    if (!input) {
-      return {
-        ok: false,
-        reason: "NO_CODE_INPUT"
-      };
-    }
-  
-    const value =
-      ${JSON.stringify(String(firstOtp))};
-  
-    input.scrollIntoView({
-      block: "center"
-    });
-  
-    input.focus();
-  
-    try {
-      Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        "value"
-      ).set.call(
-        input,
-        value
-      );
-    } catch (_) {
-      input.value = value;
-    }
-  
-    [
-      "input",
-      "change",
-      "blur"
-    ].forEach(type => {
-      input.dispatchEvent(
-        new Event(type, {
-          bubbles: true
-        })
-      );
-    });
-  
-    return {
-      ok:
-        String(input.value || "") ===
-        value,
-      value:
-        String(input.value || "")
-    };
-  })();
-  `
-      );
-  
-    if (
-      !firstFilled ||
-      !firstFilled.ok
-    ) {
-      throw new Error(
-        "JUMPCS_FIRST_SMS_FILL_FAILED_" +
-        JSON.stringify(
-          firstFilled || {}
-        )
-      );
-    }
-  
-    await Web.delay(500);
-    check(stop);
-  
-    // ======================================================
-    // 5. BẤM XÁC NHẬN OTP1
-    // ======================================================
-  
-    const firstClicked =
-      await Web.evalJS(
-        wv,
-        `
-  (() => {
-    const input =
-      document.querySelector("#code");
-  
-    if (!input) {
-      return "NO_CODE_INPUT";
-    }
-  
-    const code =
-      String(
-        input.value || ""
-      ).replace(/\\D/g, "");
-  
-    if (code.length !== 6) {
-      return "CODE_NOT_COMPLETE";
-    }
-  
-    const button =
-      document.querySelector(
-        'input.block-auth-tel-certify--submit[value="確認する"]'
-      );
-  
-    if (!button) {
-      return "NO_CONFIRM_BUTTON";
-    }
-  
-    button.disabled = false;
-    button.removeAttribute(
-      "disabled"
-    );
-  
-    button.scrollIntoView({
-      block: "center"
-    });
-  
-    button.focus();
-    button.click();
-  
-    return "CLICKED";
-  })();
-  `
-      );
-  
-    if (
-      firstClicked !== "CLICKED"
-    ) {
-      throw new Error(
-        "JUMPCS_FIRST_SMS_CONFIRM_FAILED_" +
-        firstClicked
-      );
-    }
-  
-    // ======================================================
-    // 6. CHỜ OTP1 XÁC MINH XONG VỀ MYPAGE
-    // ======================================================
-  
-    const firstCompleted =
-      await waitFor(
-        wv,
-        `
-  (() => {
-    const url =
-      String(
-        location.href || ""
-      );
-  
-    const text =
-      String(
-        document.body
-          ? document.body.innerText
-          : ""
-      )
-        .replace(/\\s+/g, "")
-        .trim();
-  
-    if (
-      text.includes(
-        "確認コードが正しくありません"
-      ) ||
-      text.includes(
-        "確認コードが一致しません"
-      ) ||
-      text.includes(
-        "認証に失敗"
-      )
-    ) {
-      return {
-        done: true,
-        ok: false,
-        error:
-          text.slice(0, 500),
-        url
-      };
-    }
-  
-    const logout =
-      document.querySelector(
-        '.block-mypage--logout a[href*="logout.aspx"]'
-      );
-  
-    if (
-      logout ||
-      text.includes("マイページ") ||
-      text.includes("ログアウト")
-    ) {
-      return {
-        done: true,
-        ok: true,
-        state: "MYPAGE",
-        url
-      };
-    }
-  
-    return null;
-  })();
-  `,
-        stop,
-        30000
-      );
-  
-    if (!firstCompleted) {
-      throw new Error(
-        "JUMPCS_FIRST_SMS_MYPAGE_TIMEOUT"
-      );
-    }
-  
-    if (!firstCompleted.ok) {
-      throw new Error(
-        "JUMPCS_FIRST_SMS_CODE_INVALID_" +
-        firstCompleted.error
-      );
-    }
-  
-    log(
-      "Xác minh OTP lần đầu thành công, đã về MyPage",
-      "success"
-    );
+  $cache.set(
+    "north_sms1_otp",
+    firstOtp
+  );
 
   // ======================================================
-  // 3. LOGOUT JUMPCS
+  // 6. NHẬP OTP1
+  // ======================================================
+
+  update(
+    onStep,
+    "JUMPCS_SMS_FIRST_CONFIRM",
+    "Confirm first SMS code"
+  );
+
+  const firstFilled =
+    await Web.evalJS(
+      wv,
+      `
+(() => {
+  const input =
+    document.querySelector("#code");
+
+  if (!input) {
+    return {
+      ok: false,
+      reason: "NO_CODE_INPUT"
+    };
+  }
+
+  const value =
+    ${JSON.stringify(String(firstOtp))};
+
+  input.scrollIntoView({
+    block: "center"
+  });
+
+  input.focus();
+
+  try {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    ).set.call(
+      input,
+      value
+    );
+  } catch (_) {
+    input.value = value;
+  }
+
+  [
+    "input",
+    "change",
+    "blur"
+  ].forEach(type => {
+    input.dispatchEvent(
+      new Event(type, {
+        bubbles: true
+      })
+    );
+  });
+
+  return {
+    ok:
+      String(input.value || "") ===
+      value,
+
+    value:
+      String(input.value || "")
+  };
+})();
+`
+    );
+
+  if (
+    !firstFilled ||
+    !firstFilled.ok
+  ) {
+    throw new Error(
+      "JUMPCS_FIRST_SMS_FILL_FAILED_" +
+      JSON.stringify(
+        firstFilled || {}
+      )
+    );
+  }
+
+  await Web.delay(500);
+
+  check(stop);
+
+  // ======================================================
+  // 7. XÁC NHẬN OTP1
+  // ======================================================
+
+  const firstClicked =
+    await Web.evalJS(
+      wv,
+      `
+(() => {
+  const input =
+    document.querySelector("#code");
+
+  if (!input) {
+    return "NO_CODE_INPUT";
+  }
+
+  const code =
+    String(
+      input.value || ""
+    ).replace(/\\D/g, "");
+
+  if (code.length !== 6) {
+    return "CODE_NOT_COMPLETE";
+  }
+
+  const button =
+    document.querySelector(
+      'input.block-auth-tel-certify--submit[value="確認する"]'
+    );
+
+  if (!button) {
+    return "NO_CONFIRM_BUTTON";
+  }
+
+  button.disabled = false;
+
+  button.removeAttribute(
+    "disabled"
+  );
+
+  button.scrollIntoView({
+    block: "center"
+  });
+
+  button.focus();
+  button.click();
+
+  return "CLICKED";
+})();
+`
+    );
+
+  if (
+    firstClicked !==
+    "CLICKED"
+  ) {
+    throw new Error(
+      "JUMPCS_FIRST_SMS_CONFIRM_FAILED_" +
+      firstClicked
+    );
+  }
+
+  // ======================================================
+  // 8. CHỜ VỀ MYPAGE SAU OTP1
+  // ======================================================
+
+  const firstCompleted =
+    await waitFor(
+      wv,
+      `
+(() => {
+  const url =
+    String(
+      location.href || ""
+    );
+
+  const text =
+    String(
+      document.body
+        ? document.body.innerText
+        : ""
+    )
+      .replace(/\\s+/g, "")
+      .trim();
+
+  if (
+    text.includes(
+      "確認コードが正しくありません"
+    ) ||
+    text.includes(
+      "確認コードが一致しません"
+    ) ||
+    text.includes(
+      "認証に失敗"
+    )
+  ) {
+    return {
+      done: true,
+      ok: false,
+      error:
+        text.slice(0, 500),
+      url
+    };
+  }
+
+  const logout =
+    document.querySelector(
+      '.block-mypage--logout a[href*="logout.aspx"]'
+    );
+
+  if (
+    logout ||
+    text.includes("マイページ") ||
+    text.includes("ログアウト")
+  ) {
+    return {
+      done: true,
+      ok: true,
+      state: "MYPAGE",
+      url
+    };
+  }
+
+  return null;
+})();
+`,
+      stop,
+      30000
+    );
+
+  if (!firstCompleted) {
+    throw new Error(
+      "JUMPCS_FIRST_SMS_MYPAGE_TIMEOUT"
+    );
+  }
+
+  if (!firstCompleted.ok) {
+    throw new Error(
+      "JUMPCS_FIRST_SMS_CODE_INVALID_" +
+      firstCompleted.error
+    );
+  }
+
+  log(
+    "OTP1 thành công, đã về MyPage",
+    "success"
+  );
+
+  // ======================================================
+  // 9. LOGOUT SAU OTP1
   // ======================================================
 
   update(
     onStep,
     "JUMPCS_SMS_LOGOUT",
-    "Logout before requesting SMS2"
+    "Logout before SMS2"
   );
 
-  log(
-    "Đã gửi SMS lần đầu, đang logout JumpCS",
-    "info"
-  );
-  
   await logoutJumpCS(
     wv,
     stop
   );
-  
+
   check(stop);
-  
+
+  // ======================================================
+  // 10. ĐỢI 7 GIÂY
+  // ======================================================
+
   update(
     onStep,
     "JUMPCS_SMS_WAIT",
     "Wait 7 seconds before login again"
   );
-  
+
   log(
-    "Đợi 7 giây trước khi login lại JumpCS",
+    "Đợi 7 giây trước khi login lại",
     "info"
   );
-  
+
   await Web.delay(
     7000
   );
-  
-  check(stop);
 
   check(stop);
 
   // ======================================================
-  // 4. LOGIN LẠI JUMPCS
+  // 11. LOGIN LẠI ĐỂ LẤY SMS2
   // ======================================================
 
   update(
     onStep,
     "JUMPCS_SMS_LOGIN",
     "Login again for SMS2"
-  );
-
-  log(
-    "Đang login lại JumpCS",
-    "info"
   );
 
   const loginResult =
@@ -1771,38 +2016,23 @@ async function verifyPhone(
         );
 
   if (
-    loginState.state !==
-      "SMS_CODE_REQUIRED" &&
-    loginState.state !==
-      "PHONE_REQUIRED"
+    loginState.state ===
+      "LOGGED_IN" ||
+    loginState.state ===
+      "PHONE_ALREADY_VERIFIED"
   ) {
-    if (
-      loginState.state ===
-        "LOGGED_IN" ||
-      loginState.state ===
-        "PHONE_ALREADY_VERIFIED"
-    ) {
-      return {
-        ok: true,
-        skipped: true,
-        phone,
-        pkey,
-        reason:
-          "PHONE_ALREADY_VERIFIED",
-        url:
-          loginState.url
-      };
-    }
-
-    throw new Error(
-      "JUMPCS_SMS_RELOGIN_STATE_" +
-      JSON.stringify(
-        loginState || {}
-      )
-    );
+    return {
+      ok: true,
+      skippedSecondSms: true,
+      reason:
+        "PHONE_ALREADY_VERIFIED",
+      phone,
+      pkey,
+      url:
+        loginState.url
+    };
   }
 
-  // Nếu login lại quay về trang nhập số
   if (
     loginState.state ===
     "PHONE_REQUIRED"
@@ -1812,66 +2042,149 @@ async function verifyPhone(
     );
   }
 
+  if (
+    loginState.state !==
+    "SMS_CODE_REQUIRED"
+  ) {
+    throw new Error(
+      "JUMPCS_SMS_RELOGIN_STATE_" +
+      JSON.stringify(
+        loginState || {}
+      )
+    );
+  }
+
+  // ======================================================
+  // 12. CHỜ NHẬP TAY OTP2
+  // ======================================================
+
+  // ======================================================
+  // 12. CHỜ 3 GIÂY TRƯỚC KHI GỌI SMS2
+  // ======================================================
+  
   update(
     onStep,
-    "JUMPCS_MANUAL",
-    "Waiting manual code"
+    "JUMPCS_SMS2",
+    "Wait SMS2"
   );
+  
+  await Web.delay(3000);
+  
+  // ======================================================
+  // 13. LẤY OTP2 TỰ ĐỘNG
+  // ======================================================
+  
+  const secondOtp =
+    await OtpNorth.waitSms2(
+      stop
+    );
   
   log(
-    "Đang chờ nhập tay OTP",
-    "info"
+    "Đã lấy OTP2: " + secondOtp,
+    "success"
   );
   
-  const completed =
-  await waitFor(
-    wv,
+  // ======================================================
+  // 14. NHẬP OTP2
+  // ======================================================
+  
+  const secondFilled =
+    await Web.evalJS(
+      wv,
   `
   (() => {
   
     const input =
       document.querySelector("#code");
   
-    if(!input)
-      return null;
+    if (!input)
+      return false;
   
     const value =
-      String(input.value || "")
-        .replace(/\\D/g,"");
+      ${JSON.stringify(secondOtp)};
   
-    if(value.length !== 6)
-      return null;
+    try {
   
-    const button =
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      ).set.call(
+        input,
+        value
+      );
+  
+    } catch (_) {
+  
+      input.value = value;
+  
+    }
+  
+    ["input","change","blur"]
+      .forEach(type =>
+        input.dispatchEvent(
+          new Event(type,{
+            bubbles:true
+          })
+        )
+      );
+  
+    return (
+      String(input.value) ===
+      value
+    );
+  
+  })();
+  `
+    );
+  
+  if (!secondFilled) {
+    throw new Error(
+      "JUMPCS_SMS2_FILL_FAILED"
+    );
+  }
+  
+  // ======================================================
+  // 15. CLICK XÁC NHẬN
+  // ======================================================
+  
+  const clicked =
+    await Web.evalJS(
+      wv,
+  `
+  (() => {
+  
+    const btn =
       document.querySelector(
         'input.block-auth-tel-certify--submit[value="確認する"]'
       );
   
-    if(!button)
-      return null;
+    if (!btn)
+      return false;
   
-    button.disabled = false;
-    button.removeAttribute("disabled");
+    btn.disabled = false;
+    btn.removeAttribute("disabled");
   
-    button.click();
+    btn.click();
   
-    return "CLICKED";
+    return true;
   
   })();
-  `,
-  stop,
-  10 * 60 * 1000
-  );
+  `
+    );
   
-  if(!completed){
+  if (!clicked) {
     throw new Error(
-      "JUMPCS_MANUAL_CODE_TIMEOUT"
+      "JUMPCS_SMS2_CONFIRM_FAILED"
     );
   }
   
-  const mypage =
-  await waitFor(
-  wv,
+  // ======================================================
+  // 16. CHỜ MYPAGE
+  // ======================================================
+  
+  const secondResult =
+    await waitFor(
+      wv,
   `
   (() => {
   
@@ -1880,37 +2193,35 @@ async function verifyPhone(
         '.block-mypage--logout a[href*="logout.aspx"]'
       );
   
-    if(logout){
+    if (logout) {
+  
       return {
         ok:true,
         url:location.href
       };
+  
     }
   
     return null;
   
   })();
   `,
-  stop,
-  30000
-  );
+      stop,
+      30000
+    );
   
-  if(!mypage){
+  if (!secondResult) {
     throw new Error(
-      "JUMPCS_MANUAL_CONFIRM_TIMEOUT"
+      "JUMPCS_SMS2_TIMEOUT"
     );
   }
   
-  log(
-    "OTP xác nhận thành công",
-    "success"
-  );
-  
   return {
-    ok:true,
+    ...secondResult,
     phone,
     pkey,
-    url:mypage.url
+    firstOtp,
+    secondOtp
   };
 }
   
@@ -3574,7 +3885,17 @@ async function createAccount({
             stopCheck,
             30000
           );
-
+    
+    log(
+      "Trạng thái sau khi login account đã tạo: " +
+        postLogin.state,
+      "info"
+    );
+    
+    // ======================================================
+    // ACCOUNT ĐÃ VERIFY HOÀN TOÀN
+    // ======================================================
+    
     if (
       postLogin.state ===
         "LOGGED_IN" ||
@@ -3589,6 +3910,61 @@ async function createAccount({
         url:
           postLogin.url
       };
+    }
+    
+    // ======================================================
+    // ACCOUNT ĐÃ LÀM SMS1, ĐANG CHỜ SMS2
+    // KHÔNG ORDER SỐ MỚI
+    // ======================================================
+    
+    else if (
+      postLogin.state ===
+      "SMS_CODE_REQUIRED"
+    ) {
+      log(
+        "Account đã qua SMS1, tiếp tục chờ OTP2",
+        "success"
+      );
+    
+      phoneResult =
+        await verifyPhone(
+          webView,
+          null,
+          email,
+          password,
+          stopCheck,
+          onStep
+        );
+    }
+    
+    // ======================================================
+    // ACCOUNT ĐÃ TẠO NHƯNG CHƯA NHẬP SĐT
+    // GIỮ phoneResult = null ĐỂ PHÍA DƯỚI ORDER SĐT
+    // ======================================================
+    
+    else if (
+      postLogin.state ===
+      "PHONE_REQUIRED"
+    ) {
+      log(
+        "Account đã tạo nhưng chưa xác minh SĐT, tiếp tục SMS1",
+        "warn"
+      );
+    
+      phoneResult = null;
+    }
+    
+    // ======================================================
+    // TRẠNG THÁI KHÔNG HỢP LỆ
+    // ======================================================
+    
+    else {
+      throw new Error(
+        "JUMPCS_EXISTING_ACCOUNT_STATE_" +
+        JSON.stringify(
+          postLogin || {}
+        )
+      );
     }
   }
 

@@ -6,6 +6,8 @@ const JumpCS = require("../services/jumpcs");
 const Session = require("../services/session");
 const Web = require("../web");
 
+let SELECTED_MODE = null;
+
 function checkStop(stopCheck) {
   if (
     typeof stopCheck ===
@@ -746,15 +748,19 @@ async function runAccount({
     )
       .trim()
       .toLowerCase();
-
+  
   if (
-    selectedMode !==
-      "create" &&
-    selectedMode !==
-      "buy"
+    selectedMode !== "create" &&
+    selectedMode !== "buy"
   ) {
+  
+    if (!SELECTED_MODE) {
+      SELECTED_MODE =
+        await askMode();
+    }
+  
     selectedMode =
-      await askMode();
+      SELECTED_MODE;
   }
 
   console.log(
