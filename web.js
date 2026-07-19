@@ -212,67 +212,142 @@ async function inputText(wv, selector, value) {
 async function clearSession(wv) {
   if (!wv) return;
 
-  Core.addLog("Clear session start", "warn");
+  Core.addLog(
+    "Clear session...",
+    "warn"
+  );
 
+  // JS Storage
   try {
-    wv.url = "https://www.pokemoncenter-online.com/logout/";
-    await delay(2000);
-  } catch (e) {
-    //
-  }
-
-  await evalJS(wv, `
+    await evalJS(wv, `
 (async () => {
-  try { localStorage.clear(); } catch(e) {}
-  try { sessionStorage.clear(); } catch(e) {}
 
   try {
-    document.cookie.split(";").forEach(c => {
-      const name = c.split("=")[0].trim();
-
-      ["", ".pokemoncenter-online.com", "www.pokemoncenter-online.com"]
-        .forEach(domain => {
-          document.cookie =
-            name +
-            "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/" +
-            (domain ? "; domain=" + domain : "");
-        });
-    });
-  } catch(e) {}
+    localStorage.clear();
+  } catch (_) {}
 
   try {
-    if (window.caches) {
-      const keys = await caches.keys();
-      for (const k of keys) {
-        await caches.delete(k);
+    sessionStorage.clear();
+  } catch (_) {}
+
+  try {
+    if (window.indexedDB) {
+      const dbs =
+        indexedDB.databases
+          ? await indexedDB.databases()
+          : [];
+
+      for (const db of dbs) {
+        if (db && db.name) {
+          await new Promise(resolve => {
+            const req = indexedDB.deleteDatabase(db.name);
+            req.onsuccess = resolve;
+            req.onerror = resolve;
+            req.onblocked = resolve;
+          });
+        }
       }
     }
-  } catch(e) {}
+  } catch (_) {}
 
   try {
-    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) {
-        await r.unregister();
+    if ("caches" in window) {
+      const keys =
+        await caches.keys();
+
+      for (const key of keys) {
+        await caches.delete(key);
       }
     }
-  } catch(e) {}
+  } catch (_) {}
 
   return true;
+
 })();
-  `);
+    `);
+  } catch (_) {}
 
-  await delay(1000);
-
+  // HTTP Cookie
   try {
-    wv.url = "about:blank";
-  } catch (e) {
-    //
+    if (
+      typeof $http.clearCookies ===
+      "function"
+    ) {
+      $http.clearCookies();
+    }
+  } catch (_) {}
+
+  // Native WKWebView Website Data
+  try {
+
+    const WKWebsiteDataStore =
+      $objc(
+        "WKWebsiteDataStore"
+      );
+
+    const NSDate =
+      $objc("NSDate");
+
+    const dataStore =
+      WKWebsiteDataStore.invoke(
+        "defaultDataStore"
+      );
+
+    const allTypes =
+      WKWebsiteDataStore.invoke(
+        "allWebsiteDataTypes"
+      );
+
+    const fromDate =
+      NSDate.invoke(
+        "dateWithTimeIntervalSince1970:",
+        0
+      );
+
+    await new Promise(resolve => {
+
+      const completion =
+        $block(
+          "void",
+          () => resolve()
+        );
+
+      dataStore.invoke(
+        "removeDataOfTypes:modifiedSince:completionHandler:",
+        allTypes,
+        fromDate,
+        completion
+      );
+
+    });
+
+  } catch (error) {
+
+    console.log(
+      "[WEB] CLEAR WK DATA:",
+      String(error)
+    );
+
   }
 
-  await delay(1000);
-
-  Core.addLog("Clear session done", "success");
+  try {
+    await delay(1000);
+  
+    wv.url = "about:blank";
+  
+    await waitPageReady(
+      wv,
+      10000
+    );
+  
+  } catch (_) {}
+  
+  await delay(500);
+  
+  Core.addLog(
+    "Clear session done",
+    "success"
+  );
 }
 
 async function hasTermsButton(wv) {

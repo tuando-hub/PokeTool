@@ -6,7 +6,8 @@ const JumpCS = require("../services/jumpcs");
 const Session = require("../services/session");
 const Web = require("../web");
 
-let SELECTED_MODE = null;
+let SELECTED_ACTION = null;
+let SELECTED_PAYMENT = null;
 
 function checkStop(stopCheck) {
   if (
@@ -474,6 +475,7 @@ async function runBuyFlow({
   acc,
   index,
   total,
+  paymentMethod,
   stopCheck
 }) {
   let webView = null;
@@ -539,27 +541,23 @@ async function runBuyFlow({
 
     jumpCSResult =
       await JumpCS.buyAccount({
-        email:
-          acc.email,
-
-        pass:
-          acc.pass,
-
-        productIds:
-          acc.productIds,
-
-        buyQty:
-          acc.buyQty || "1",
-
-        creditList:
-          acc.creditList,
-
-        creditOwnerList:
-          acc.creditOwnerList,
-
+        email: acc.email,
+        pass: acc.pass,
+    
+        imapEmail: acc.imapEmail,
+        imapPass: acc.imapPass,
+    
+        productIds: acc.productIds,
+        buyQty: acc.buyQty || "1",
+    
+        creditList: acc.creditList,
+        creditOwnerList: acc.creditOwnerList,
+    
+        paymentMethod,
+    
         webView,
         stopCheck,
-
+    
         onStep:
           createStepHandler(
             acc,
@@ -616,19 +614,28 @@ async function runBuyFlow({
         Boolean(
           jumpCSResult.ok
         ),
-
+    
       pending:
         Boolean(
           jumpCSResult.pending
         ),
-
+    
       mode:
         "buy",
-
+    
       orderId:
         jumpCSResult.orderId ||
         "",
-
+    
+      paymentCode:
+        jumpCSResult.paymentCode ||
+        (
+          jumpCSResult.purchaseResult &&
+          jumpCSResult.purchaseResult.paymentCode
+            ? jumpCSResult.purchaseResult.paymentCode
+            : ""
+        ),
+    
       jumpCSResult
     };
 
@@ -678,6 +685,100 @@ async function runBuyFlow({
   }
 }
 
+async function askPaymentMethod() {
+  const result =
+    await $ui.menu({
+      items: [
+        "Credit Card",
+        "Conbini"
+      ]
+    });
+
+  console.log(
+    "[PAYMENT RAW]",
+    JSON.stringify(result)
+  );
+
+  if (
+    result === undefined ||
+    result === null
+  ) {
+    throw new Error(
+      "PAYMENT_CANCELLED"
+    );
+  }
+
+  let index = -1;
+
+  if (
+    typeof result ===
+    "number"
+  ) {
+    index = result;
+  } else if (
+    typeof result ===
+    "object"
+  ) {
+    if (
+      typeof result.index ===
+      "number"
+    ) {
+      index =
+        result.index;
+    } else if (
+      typeof result.selectedIndex ===
+      "number"
+    ) {
+      index =
+        result.selectedIndex;
+    }
+  } else if (
+    typeof result ===
+    "string"
+  ) {
+    const value =
+      result
+        .trim()
+        .toLowerCase();
+
+    if (
+      value.includes(
+        "credit"
+      )
+    ) {
+      return "credit";
+    }
+
+    if (
+      value.includes(
+        "conbini"
+      )
+    ) {
+      return "conbini";
+    }
+
+    if (
+      /^\d+$/.test(value)
+    ) {
+      index =
+        Number(value);
+    }
+  }
+
+  if (index === 0) {
+    return "credit";
+  }
+
+  if (index === 1) {
+    return "conbini";
+  }
+
+  throw new Error(
+    "INVALID_PAYMENT_RESULT_" +
+      JSON.stringify(result)
+  );
+}
+
 // ======================================================
 // MAIN
 // ======================================================
@@ -699,19 +800,26 @@ async function runAccount({
     )
       .trim()
       .toLowerCase();
-  
+
   if (
     selectedMode !== "create" &&
     selectedMode !== "buy"
   ) {
-  
-    if (!SELECTED_MODE) {
-      SELECTED_MODE =
+    if (!SELECTED_ACTION) {
+      SELECTED_ACTION =
         await askMode();
+
+      if (
+        SELECTED_ACTION ===
+        "buy"
+      ) {
+        SELECTED_PAYMENT =
+          await askPaymentMethod();
+      }
     }
-  
+
     selectedMode =
-      SELECTED_MODE;
+      SELECTED_ACTION;
   }
 
   console.log(
@@ -719,11 +827,26 @@ async function runAccount({
     selectedMode
   );
 
+  console.log(
+    "[PAYMENT SELECTED]",
+    SELECTED_PAYMENT
+  );
+
   Core.addLog(
     "Selected mode: " +
       selectedMode,
     "info"
   );
+
+  if (
+    selectedMode === "buy"
+  ) {
+    Core.addLog(
+      "Payment method: " +
+        SELECTED_PAYMENT,
+      "info"
+    );
+  }
 
   checkStop(
     stopCheck
@@ -749,17 +872,31 @@ async function runAccount({
       acc,
       index,
       total,
+
+      paymentMethod:
+        SELECTED_PAYMENT,
+
       stopCheck
     });
   }
 
   throw new Error(
     "INVALID_JUMP_MODE_" +
-    selectedMode
+      selectedMode
+  );
+}
+
+function resetSelection() {
+  SELECTED_ACTION = null;
+  SELECTED_PAYMENT = null;
+
+  console.log(
+    "[JUMP SELECTION RESET]"
   );
 }
 
 module.exports = {
   runAccount,
-  askMode
+  askMode,
+  resetSelection
 };

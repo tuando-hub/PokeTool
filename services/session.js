@@ -3,20 +3,6 @@
 const Core = require("../core");
 const Web = require("../web");
 
-// Các domain cần mở lần lượt để xóa storage theo từng origin
-const CLEAR_URLS = [
-  "https://shonenjumpplus.com/",
-  "https://www.shonenjumpplus.com/",
-  "https://api.shonenjumpplus.com/",
-
-  "https://jumpcs.shueisha.co.jp/",
-  "https://id.shueisha.co.jp/",
-
-  "https://www.sps-system.com/",
-  "https://emvtds.sps-system.com/",
-  "https://centinelapi.cardinalcommerce.com/"
-];
-
 function checkStop(stopCheck) {
   if (typeof stopCheck === "function") {
     stopCheck();
@@ -564,112 +550,7 @@ async function clearJumpSession(
 
   checkStop(stopCheck);
 
-  // Logout Jump+ trước nếu session còn tồn tại
-  try {
-    wv.url =
-      "https://shonenjumpplus.com/";
-
-    await Web.waitPageReady(
-      wv,
-      15000
-    );
-
-    await Web.delay(500);
-
-    const my =
-      await getJumpMyInfo(
-        wv,
-        stopCheck
-      );
-
-    if (
-      my &&
-      my.logged_in &&
-      my.csrf_token
-    ) {
-      await logoutJump(
-        wv,
-        my.csrf_token,
-        stopCheck
-      );
-    }
-  } catch (error) {
-    console.log(
-      "[SESSION] JUMP LOGOUT SKIP:",
-      String(
-        error.message ||
-        error
-      )
-    );
-  }
-
-  // Xóa từng origin
-  for (
-    const url
-    of CLEAR_URLS
-  ) {
-    checkStop(stopCheck);
-
-    try {
-      wv.url = url;
-
-      await Web.waitPageReady(
-        wv,
-        12000
-      );
-
-      await Web.delay(400);
-
-      const result =
-        await clearCurrentOrigin(
-          wv,
-          stopCheck
-        );
-
-      console.log(
-        "[SESSION] CLEARED:",
-        JSON.stringify(result)
-      );
-
-    } catch (error) {
-      console.log(
-        "[SESSION] CLEAR SKIP:",
-        url,
-        String(
-          error.message ||
-          error
-        )
-      );
-    }
-  }
-
-  /*
-   * Xóa bằng hàm native của Web.
-   * Phần này quan trọng vì JavaScript không thể
-   * trực tiếp xóa cookie HttpOnly.
-   */
-  try {
-    await Web.clearSession(wv);
-  } catch (error) {
-    console.log(
-      "[SESSION] NATIVE CLEAR ERROR:",
-      String(
-        error.message ||
-        error
-      )
-    );
-  }
-
-  try {
-    wv.url = "about:blank";
-    await Web.delay(500);
-  } catch (_) {
-    //
-  }
-
-  console.log(
-    "[SESSION] MULTI DOMAIN CLEAR COMPLETE"
-  );
+  await Web.clearSession(wv);
 
   return true;
 }

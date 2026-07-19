@@ -42,7 +42,11 @@ function pushDone(acc, meta) {
   list.push({
     email: acc.email,
     pass: acc.pass,
-    text: `${acc.email}:${acc.pass}`,
+    text:
+      meta &&
+      meta.paymentCode
+        ? `${acc.email}:${acc.pass}\t${meta.paymentCode}`
+        : `${acc.email}:${acc.pass}`,
     doneAt: Date.now(),
     meta: meta || {}
   });
@@ -405,11 +409,30 @@ async function run() {
     Core.addLog("Runner fatal: " + (e.message || e), "error");
     $ui.alert(String(e.message || e));
   } finally {
+    try {
+      BuyJumpPlus
+        .resetSelection();
+    } catch (error) {
+      Core.addLog(
+        "Reset Jump selection lỗi: " +
+          String(
+            error &&
+            error.message
+              ? error.message
+              : error
+          ),
+        "warn"
+      );
+    }
+  
     Core.setRunning(false);
     Core.refreshStats();
   
     if (!STOP_FLAG) {
-      Core.addLog("Runner finished", "info");
+      Core.addLog(
+        "Runner finished",
+        "info"
+      );
     }
   }
 }

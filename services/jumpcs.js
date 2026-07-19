@@ -115,17 +115,20 @@ async function loginJumpCS(
     "ALREADY_LOGGED_IN"
   ) {
     log(
-      "Phát hiện JumpCS đã login, đang logout",
+      "Phát hiện session JumpCS cũ, đang clear",
       "warn"
     );
   
-    await logoutJumpCS(
+    await Web.clearSession(wv);
+    
+    check(stop);
+    
+    await open(
       wv,
+      MENU_URL,
       stop
     );
-  
-    check(stop);
-  
+    
     return await loginJumpCS(
       wv,
       email,
@@ -2325,47 +2328,23 @@ async function openNewMemberPage(wv, stop) {
 `);
 
   if (state.loggedIn) {
-    log("Phát hiện session JumpCS cũ, đang logout", "warn");
-
-    const clicked = await Web.evalJS(wv, `
-(() => {
-  const link=document.querySelector(
-    '.block-mypage--logout a[href*="/shop/customer/logout.aspx"]'
-  );
-
-  if(!link) return false;
-
-  link.scrollIntoView({block:"center"});
-  link.click();
-
-  return true;
-})();
-`);
-
-    if (!clicked) {
-      throw new Error(
-        "JUMPCS_LOGOUT_CLICK_FAILED"
-      );
-    }
-    
-    await Web.delay(1500);
-    
-    check(stop);
-    
-    wv.url = MENU_URL;
-    
-    await Web.waitPageReady(
-      wv,
-      30000
-    );
-    
-    await Web.delay(1200);
-    
+  
     log(
-      "Đã bấm logout JumpCS",
-      "success"
+      "Phát hiện session JumpCS cũ, đang clear",
+      "warn"
     );
-    }
+  
+    await Web.clearSession(wv);
+  
+    check(stop);
+  
+    await open(
+      wv,
+      MENU_URL,
+      stop
+    );
+  
+  }
 
   check(stop);
 
@@ -3291,15 +3270,44 @@ async function purchaseProduct({
   quantity,
   credit,
   creditOwner,
+  paymentMethod,
+
+  email,
+  imapEmail,
+  imapPass,
+
   stopCheck,
   onStep
 }) {
-  const productId=parseProductId(ids);
-  const qty=String(quantity || "1");
-  const card=parseStoreCard(
-    credit,
-    creditOwner
-  );
+  const productId =
+    parseProductId(ids);
+  
+  const qty =
+    String(quantity || "1");
+  
+  const method =
+    String(
+      paymentMethod || "credit"
+    ).toLowerCase();
+  
+  let card = null;
+  
+  if (method === "credit") {
+    card = parseStoreCard(
+      credit,
+      creditOwner
+    );
+  }
+  
+  if (
+    method !== "credit" &&
+    method !== "conbini"
+  ) {
+    throw new Error(
+      "JUMPCS_INVALID_PAYMENT_METHOD_" +
+      method
+    );
+  }
 
   update(onStep,"JUMPCS_STORE","Open Store Session");
 
@@ -3347,16 +3355,22 @@ async function purchaseProduct({
     stopCheck
   );
 
-  update(onStep,"JUMPCS_CARD","Select New Card");
-
-  await selectNewCard(
-    webView,
-    stopCheck
-  );
-
-  const cardReady = await waitFor(
-    webView,
-    `
+  if (method === "credit") {
+    update(
+      onStep,
+      "JUMPCS_CARD",
+      "Select New Card"
+    );
+  
+    await selectNewCard(
+      webView,
+      stopCheck
+    );
+  
+    const cardReady =
+      await waitFor(
+        webView,
+        `
   (() => {
     const brand =
       document.querySelector(
@@ -3378,105 +3392,194 @@ async function purchaseProduct({
     }
   
     return {
-      ready: true,
-      brand: brand.name,
-      number: number.name,
-      code: code.name
+      ready: true
     };
   })();
   `,
-    stopCheck,
-    30000
-  );
+        stopCheck,
+        30000
+      );
   
-  if (!cardReady) {
-    const debug = await Web.evalJS(
+    if (!cardReady) {
+      throw new Error(
+        "JUMPCS_CARD_FORM_TIMEOUT"
+      );
+    }
+  
+    await setStoreSelect(
       webView,
-      `
-  (() => ({
-    url: location.href,
+      'select[name="card_brand"]',
+      card.brand,
+      stopCheck
+    );
   
-    selects: Array.from(
-      document.querySelectorAll("select")
-    ).map(el => ({
-      name: el.name || "",
-      id: el.id || "",
-      value: el.value || ""
-    })),
+    await Web.delay(500);
   
-    inputs: Array.from(
-      document.querySelectorAll("input")
-    ).map(el => ({
-      name: el.name || "",
-      id: el.id || "",
-      type: el.type || ""
-    }))
-  }))();
+    await setStoreInput(
+      webView,
+      'input[name="card_num"]',
+      card.number,
+      stopCheck,
+      140
+    );
+  
+    await Web.delay(500);
+  
+    await setStoreInput(
+      webView,
+      'input[name="security_code"]',
+      card.cvv,
+      stopCheck,
+      180
+    );
+  
+    await Web.delay(500);
+  
+    await setStoreSelect(
+      webView,
+      'select[name="card_m"]',
+      card.month,
+      stopCheck
+    );
+  
+    await Web.delay(500);
+  
+    await setStoreSelect(
+      webView,
+      'select[name="card_y"]',
+      card.year,
+      stopCheck
+    );
+  
+    await Web.delay(500);
+  
+    await setStoreInput(
+      webView,
+      'input[name="holder_name"]',
+      card.owner,
+      stopCheck,
+      140
+    );
+  
+    await Web.delay(1000);
+  
+  } else {
+    update(
+      onStep,
+      "JUMPCS_CONBINI",
+      "Select Seven-Eleven"
+    );
+  
+    const conbiniResult =
+      await Web.evalJS(
+        webView,
+        `
+  (() => {
+    const fire = el => {
+      el.dispatchEvent(
+        new Event("input", {
+          bubbles: true
+        })
+      );
+  
+      el.dispatchEvent(
+        new Event("change", {
+          bubbles: true
+        })
+      );
+    };
+  
+    const method =
+      document.querySelector(
+        '#method_rB'
+      );
+  
+    if (!method) {
+      return {
+        ok: false,
+        reason: "NO_CONBINI_METHOD"
+      };
+    }
+  
+    method.scrollIntoView({
+      block: "center"
+    });
+  
+    if (!method.checked) {
+      const label =
+        document.querySelector(
+          'label[for="method_rB"]'
+        );
+  
+      if (label) {
+        label.click();
+      } else {
+        method.click();
+      }
+  
+      method.checked = true;
+      fire(method);
+    }
+  
+    const seven =
+      document.querySelector(
+        'input[name="cvs_type"][value="00007"]'
+      );
+  
+    if (!seven) {
+      return {
+        ok: false,
+        reason: "NO_SEVEN_ELEVEN"
+      };
+    }
+  
+    seven.scrollIntoView({
+      block: "center"
+    });
+  
+    if (!seven.checked) {
+      const label =
+        seven.closest("label");
+  
+      if (label) {
+        label.click();
+      } else {
+        seven.click();
+      }
+  
+      seven.checked = true;
+      fire(seven);
+    }
+  
+    return {
+      ok:
+        method.checked &&
+        seven.checked,
+  
+      method:
+        method.value,
+  
+      cvsType:
+        seven.value
+    };
+  })();
   `
-    );
+      );
   
-    throw new Error(
-      "JUMPCS_CARD_FORM_TIMEOUT_" +
-      JSON.stringify(debug || {})
-    );
+    if (
+      !conbiniResult ||
+      !conbiniResult.ok
+    ) {
+      throw new Error(
+        "JUMPCS_CONBINI_SELECT_FAILED_" +
+        JSON.stringify(
+          conbiniResult || {}
+        )
+      );
+    }
+  
+    await Web.delay(1200);
   }
-
-  await setStoreSelect(
-    webView,
-    'select[name="card_brand"]',
-    card.brand,
-    stopCheck
-  );
-  
-  await Web.delay(500);
-  
-  await setStoreInput(
-    webView,
-    'input[name="card_num"]',
-    card.number,
-    stopCheck,
-    140
-  );
-  
-  await Web.delay(500);
-  
-  await setStoreInput(
-    webView,
-    'input[name="security_code"]',
-    card.cvv,
-    stopCheck,
-    180
-  );
-  
-  await Web.delay(500);
-  
-  await setStoreSelect(
-    webView,
-    'select[name="card_m"]',
-    card.month,
-    stopCheck
-  );
-  
-  await Web.delay(500);
-  
-  await setStoreSelect(
-    webView,
-    'select[name="card_y"]',
-    card.year,
-    stopCheck
-  );
-  
-  await Web.delay(500);
-  
-  await setStoreInput(
-    webView,
-    'input[name="holder_name"]',
-    card.owner,
-    stopCheck,
-    140
-  );
-  
-  await Web.delay(1000);
 
   update(onStep,"JUMPCS_ORDER_CONFIRM","Open Order Confirmation");
 
@@ -3511,14 +3614,68 @@ async function purchaseProduct({
 
   update(onStep,"JUMPCS_RESULT","Wait Order Result");
 
-  const orderResult=
+  const orderResult =
     await waitOrderResult(
       webView,
       stopCheck,
       60000
     );
-
-  if(orderResult.ok){
+  
+  let paymentCode = "";
+  
+  if (
+    method === "conbini" &&
+    orderResult.ok &&
+    orderResult.orderId
+  ) {
+    check(stopCheck);
+    
+    log(
+        "Thanh toán conbini thành công",
+         "info"
+        );
+  
+    update(
+      onStep,
+      "JUMPCS_PAYMENT_MAIL",
+      "Wait Seven-Eleven payment mail"
+    );
+  
+    log(
+      "Đang chờ mail mã thanh toán Seven",
+      "info"
+    );
+  
+    // Đợi hệ thống gửi mail trước khi bắt đầu check IMAP
+    await Web.delay(5000);
+  
+    check(stopCheck);
+  
+    paymentCode =
+      await OTP.getJumpConbiniPayment(
+        imapEmail,
+        imapPass,
+        email,
+        orderResult.orderId
+      );
+  
+    check(stopCheck);
+  
+    if (!paymentCode) {
+      throw new Error(
+        "JUMPCS_CONBINI_PAYMENT_CODE_NOT_FOUND_" +
+        orderResult.orderId
+      );
+    }
+  
+    log(
+      "Đã lấy mã thanh toán Seven: " +
+        paymentCode,
+      "success"
+    );
+  }
+  
+  if (orderResult.ok) {
     log(
       "Đặt hàng thành công" +
       (
@@ -3536,14 +3693,20 @@ async function purchaseProduct({
   }
 
   return {
-    ok:orderResult.ok,
-    pending:orderResult.pending || false,
+    ok: orderResult.ok,
+  
+    pending: orderResult.pending || false,
     productId,
     productUrl,
-    quantity:qty,
+  
+    quantity: qty,
+    paymentMethod: method,
     finalClick,
-    orderId:orderResult.orderId || "",
-    url:orderResult.url || ""
+  
+    orderId: orderResult.orderId || "",
+    paymentCode: paymentCode || "",
+  
+    url: orderResult.url || ""
   };
 }
 
@@ -4060,10 +4223,15 @@ async function createAccount({
 async function buyAccount({
   email,
   pass,
+
+  imapEmail,
+  imapPass,
+
   productIds,
   buyQty,
   creditList,
   creditOwnerList,
+  paymentMethod,
   webView,
   stopCheck,
   onStep
@@ -4189,11 +4357,22 @@ async function buyAccount({
   const purchaseResult =
     await purchaseProduct({
       webView,
-      storeUrl: url,
+  
+      storeUrl:
+        url,
+  
       ids,
       quantity,
+  
       credit,
       creditOwner,
+  
+      paymentMethod,
+  
+      email,
+      imapEmail,
+      imapPass,
+  
       stopCheck,
       onStep
     });
@@ -4230,20 +4409,14 @@ async function buyAccount({
   );
 
   return {
-    ok:
-      purchaseResult.ok,
-
-    pending:
-      purchaseResult.pending,
-
+    ok: purchaseResult.ok,
+    pending: purchaseResult.pending,
     purchaseResult,
-
-    orderId:
-      purchaseResult.orderId,
-
-    url:
-      purchaseResult.url,
-
+  
+    orderId: purchaseResult.orderId,
+    paymentCode: purchaseResult.paymentCode || "",
+  
+    url: purchaseResult.url,
     logoutResult
   };
 }

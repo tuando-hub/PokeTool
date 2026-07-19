@@ -861,22 +861,20 @@ async function registerAccount({
       if (retryCount >= 1) {
         throw new Error("JUMP_LOGIN_BUTTON_NOT_FOUND_AFTER_RETRY");
       }
-
-      update("SESSION", "Logout old session");
-      log("Phát hiện session cũ, đang logout", "warn");
-
+      
+      log("Phát hiện session cũ, đang clear session", "warn");
+      
       try {
-        await Session.ensureJumpLoggedOut(wv);
+        await Session.clearJumpSession(
+          wv,
+          stopCheck
+        );
       } catch (err) {
-        log("Logout session cũ lỗi: " + String(err.message || err), "warn");
-      }
-
-      update("CLEAR", "Clear old session");
-
-      try {
-        await Session.clearJumpSession(wv);
-      } catch (err) {
-        log("Clear session cũ lỗi: " + String(err.message || err), "warn");
+        log(
+          "Clear session cũ lỗi: " +
+          String(err.message || err),
+          "warn"
+        );
       }
 
       try {
@@ -1058,7 +1056,10 @@ async function registerAccount({
       log("Đang logout và clear session", "info");
 
       try {
-        await Session.clearJumpSession(wv);
+        await Session.clearJumpSession(
+          wv,
+          stopCheck
+        );
         log("Clear session hoàn tất", "success");
       } catch (e) {
         log("Clear session lỗi: " + String(e.message || e), "warn");
@@ -2506,37 +2507,20 @@ async function loginOnly({
         "warn"
       );
 
-      try {
-        await Session.ensureJumpLoggedOut(
-          wv
-        );
-      } catch (logoutError) {
-        log(
-          "Logout session cũ lỗi: " +
-          String(
-            logoutError.message ||
-            logoutError
-          ),
-          "warn"
-        );
-      }
-
       update(
         "CLEAR",
         "Clear old session"
       );
-
+      
       try {
         await Session.clearJumpSession(
-          wv
+          wv,
+          stopCheck
         );
       } catch (clearError) {
         log(
           "Clear session cũ lỗi: " +
-          String(
-            clearError.message ||
-            clearError
-          ),
+          String(clearError.message || clearError),
           "warn"
         );
       }
