@@ -1,8 +1,8 @@
 {
-  "version": "2.0.20",
+  "version": "2.0.22",
   "changelog": {
     "items": [
-      "Fix toàn bộ tool"
+      "Fix lỗi login"
     ]
   }
 }

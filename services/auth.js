@@ -264,7 +264,7 @@ async function installOtpHook(wv) {
 async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
   let currentOtp = otp;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 10; attempt++) {
     checkStop(stopCheck);
 
     await Web.evalJS(wv, `window.__OTP_RESULT = "";`);
@@ -315,7 +315,7 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
       }
     }
 
-    if (attempt >= 3) break;
+    if (attempt >= 10) break;
 
     Core.addLog("OTP retry " + attempt, "warn");
 

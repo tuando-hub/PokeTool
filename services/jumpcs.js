@@ -123,12 +123,6 @@ async function loginJumpCS(
     
     check(stop);
     
-    await open(
-      wv,
-      MENU_URL,
-      stop
-    );
-    
     return await loginJumpCS(
       wv,
       email,
@@ -4182,17 +4176,8 @@ async function createAccount({
       );
   }
 
-  update(
-    onStep,
-    "JUMPCS_LOGOUT",
-    "Logout JumpCS"
-  );
-
-  const logoutResult =
-    await logoutJumpCS(
-      webView,
-      stopCheck
-    );
+  await Web.clearSession(webView);
+    check(stopCheck);
 
   update(
     onStep,
@@ -4211,8 +4196,7 @@ async function createAccount({
     otp,
     profile,
     phoneOrder,
-    phoneResult,
-    logoutResult
+    phoneResult
   };
 }
 
@@ -4274,11 +4258,17 @@ async function buyAccount({
       "info"
     );
   
-    const storeResult =
-      await API.loginAndGetStoreUrl({
-        email,
-        password
-      });
+    //const storeResult =
+      //await API.loginAndGetStoreUrl({
+        //email,
+        //password
+      //});
+      
+      const storeResult =
+        await API.loginAndGetStoreUrl({
+          email: "ripped-page-7a@icloud.com",
+          password: "Hoai1234"
+        });
   
     check(stopCheck);
   
@@ -4392,11 +4382,8 @@ async function buyAccount({
     "Logout JumpCS"
   );
 
-  const logoutResult =
-    await logoutJumpCS(
-      webView,
-      stopCheck
-    );
+  await Web.clearSession(webView);
+  check(stopCheck);
 
   update(
     onStep,
@@ -4416,8 +4403,7 @@ async function buyAccount({
     orderId: purchaseResult.orderId,
     paymentCode: purchaseResult.paymentCode || "",
   
-    url: purchaseResult.url,
-    logoutResult
+    url: purchaseResult.url
   };
 }
 

@@ -8,6 +8,13 @@ const T = Core.THEME;
 const sw = $device.info.screen.width;
 //const sh = $device.info.screen.height;
 
+let CURRENT_NATIVE_WEBVIEW = null;
+
+const SAFARI_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) " +
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+  "Version/26.5.2 Mobile/15E148 Safari/604.1";
+
 const CARD_X = 12;
 const CARD_W = sw - CARD_X * 2;
 const STATUS_H = 28;
@@ -320,7 +327,7 @@ function modeMeta(mode) {
 function render() {
   $ui.render({
     props: {
-      title: "PokeTool",
+      title: "PokeTool Server",
       bgcolor: $color(T.bg)
     },
 
@@ -1836,91 +1843,375 @@ function createWebView(url) {
     return null;
   }
 
-  const old = $("mainWebView");
+  // ==========================================
+  // REMOVE WEBVIEW CŨ
+  // ==========================================
 
-  if (old) {
+  if (CURRENT_NATIVE_WEBVIEW) {
     try {
-      old.remove();
-    } catch (error) {
-      //
-    }
+      CURRENT_NATIVE_WEBVIEW.invoke(
+        "stopLoading"
+      );
+    } catch (e) {}
+
+    try {
+      CURRENT_NATIVE_WEBVIEW.invoke(
+        "removeFromSuperview"
+      );
+    } catch (e) {}
+
+    CURRENT_NATIVE_WEBVIEW = null;
   }
 
-  host.add({
-    type: "web",
+  try {
+    // ==========================================
+    // NATIVE CLASSES
+    // ==========================================
 
-    props: {
-      id: "mainWebView",
-      url: WEB_URL,
+    const WKWebViewConfiguration =
+      $objc(
+        "WKWebViewConfiguration"
+      );
 
-      bgcolor: $color("#FFFFFF")
-    },
+    const WKWebsiteDataStore =
+      $objc(
+        "WKWebsiteDataStore"
+      );
 
-    layout: make => {
-      make.top.left.right.bottom.equalTo(0);
-    },
+    const WKWebView =
+      $objc(
+        "WKWebView"
+      );
 
-    events: {
-      didStart(sender) {
-        sender._pageReady = false;
-      },
+    // ==========================================
+    // CONFIG
+    // ==========================================
 
-      didFinish(sender) {
-        sender._pageReady = true;
+    const config =
+      WKWebViewConfiguration
+        .invoke("alloc")
+        .invoke("init");
 
-        WEB_URL =
-          sender.url ||
-          WEB_URL;
-      },
+    if (!config) {
+      Core.addLog(
+        "WKWebView config failed",
+        "error"
+      );
 
-      didReceiveResponse(
-        sender,
-        response
-      ) {
+      return null;
+    }
+
+    // ==========================================
+    // PRIVATE / NON-PERSISTENT DATA STORE
+    // giống code test
+    // ==========================================
+
+    const store =
+      WKWebsiteDataStore.invoke(
+        "nonPersistentDataStore"
+      );
+
+    if (!store) {
+      Core.addLog(
+        "WKWebsiteDataStore failed",
+        "error"
+      );
+
+      return null;
+    }
+
+    config.invoke(
+      "setWebsiteDataStore:",
+      store
+    );
+
+    // ==========================================
+    // GET HOST NATIVE VIEW
+    // ==========================================
+
+    const hostNative =
+      host.runtimeValue();
+
+    if (!hostNative) {
+      Core.addLog(
+        "webHost runtimeValue failed",
+        "error"
+      );
+
+      return null;
+    }
+
+    // ==========================================
+    // CREATE WKWEBVIEW
+    // ==========================================
+
+    const frame = {
+      x: 0,
+      y: 0,
+      width:
+        host.frame &&
+        host.frame.width
+          ? host.frame.width
+          : 390,
+
+      height:
+        host.frame &&
+        host.frame.height
+          ? host.frame.height
+          : 700
+    };
+
+    const nativeWV =
+      WKWebView
+        .invoke("alloc")
+        .invoke(
+          "initWithFrame:configuration:",
+          frame,
+          config
+        );
+
+    if (!nativeWV) {
+      Core.addLog(
+        "WKWebView create failed",
+        "error"
+      );
+
+      return null;
+    }
+
+    CURRENT_NATIVE_WEBVIEW =
+      nativeWV;
+
+    // ==========================================
+    // UA
+    // ==========================================
+
+    try {
+      nativeWV.invoke(
+        "setCustomUserAgent:",
+        SAFARI_UA
+      );
+
+      Core.addLog(
+        "Native Safari UA set",
+        "info"
+      );
+    } catch (e) {
+      Core.addLog(
+        "Native UA error: " +
+          String(e),
+        "warn"
+      );
+    }
+
+    // ==========================================
+    // ADD TO HOST
+    // ==========================================
+
+    hostNative.invoke(
+      "addSubview:",
+      nativeWV
+    );
+
+    Core.addLog(
+      "Native WKWebView created",
+      "info"
+    );
+
+    // ==========================================
+    // ADAPTER
+    // ==========================================
+
+    const adapter = {
+      _native:
+        nativeWV,
+
+      _pageReady:
+        false,
+
+      _url:
+        WEB_URL,
+
+      // ------------------------------
+      // JSBox-compatible-ish eval
+      // ------------------------------
+
+      eval(options) {
+        const script =
+          options &&
+          options.script
+            ? options.script
+            : "";
+
+        const handler =
+          options &&
+          typeof options.handler ===
+            "function"
+            ? options.handler
+            : function() {};
+
         try {
-          const url =
-            response.URL || "";
+          const completion =
+            $block(
+              "void, id, id",
+              (
+                result,
+                error
+              ) => {
+                if (error) {
+                  handler(null);
+                  return;
+                }
 
-          if (
-            url.includes(
-              "/auth/login-status"
-            ) ||
-            url.includes(
-              "/cart/get"
-            ) ||
-            url.includes(
-              "/order/"
-            ) ||
-            url.includes(
-              "/mypage"
-            ) ||
-            url.includes(
-              "/lottery"
-            ) ||
-            url.includes(
-              "/login-mfa"
-            )
-          ) {
-            sender._pageReady = true;
-          }
-        } catch (error) {
-          //
+                if (
+                  result === null ||
+                  result === undefined
+                ) {
+                  handler(null);
+                  return;
+                }
+
+                try {
+                  if (
+                    typeof result.rawValue ===
+                    "function"
+                  ) {
+                    handler(
+                      result.rawValue()
+                    );
+
+                    return;
+                  }
+                } catch (e) {}
+
+                handler(result);
+              }
+            );
+
+          nativeWV.invoke(
+            "evaluateJavaScript:completionHandler:",
+            script,
+            completion
+          );
+
+        } catch (e) {
+          Core.addLog(
+            "Native eval error: " +
+              String(e),
+            "error"
+          );
+
+          handler(null);
         }
       },
 
-      didFail(sender, error) {
-        sender._pageReady = false;
+      remove() {
+        try {
+          nativeWV.invoke(
+            "stopLoading"
+          );
+        } catch (e) {}
 
-        Core.addLog(
-          "WebView error: " +
-            String(error),
-          "error"
-        );
+        try {
+          nativeWV.invoke(
+            "removeFromSuperview"
+          );
+        } catch (e) {}
+
+        if (
+          CURRENT_NATIVE_WEBVIEW ===
+          nativeWV
+        ) {
+          CURRENT_NATIVE_WEBVIEW =
+            null;
+        }
       }
-    }
-  });
+    };
 
-  return $("mainWebView");
+    // ==========================================
+    // URL PROPERTY
+    // để code cũ vẫn:
+    //
+    // wv.url = "https://..."
+    // ==========================================
+
+    Object.defineProperty(
+      adapter,
+      "url",
+      {
+        get() {
+          return adapter._url;
+        },
+
+        set(value) {
+          if (!value) {
+            return;
+          }
+
+          adapter._url =
+            String(value);
+
+          WEB_URL =
+            String(value);
+
+          try {
+            const NSURL =
+              $objc("NSURL");
+
+            const NSURLRequest =
+              $objc(
+                "NSURLRequest"
+              );
+
+            const nsurl =
+              NSURL.invoke(
+                "URLWithString:",
+                String(value)
+              );
+
+            const request =
+              NSURLRequest.invoke(
+                "requestWithURL:",
+                nsurl
+              );
+
+            adapter._pageReady =
+              false;
+
+            nativeWV.invoke(
+              "loadRequest:",
+              request
+            );
+
+          } catch (e) {
+            Core.addLog(
+              "Native load error: " +
+                String(e),
+              "error"
+            );
+          }
+        }
+      }
+    );
+
+    // ==========================================
+    // LOAD INITIAL URL
+    // ==========================================
+
+    adapter.url =
+      WEB_URL;
+
+    return adapter;
+
+  } catch (e) {
+    Core.addLog(
+      "createWebView native error: " +
+        String(e),
+      "error"
+    );
+
+    return null;
+  }
 }
 
 function destroyWebView() {

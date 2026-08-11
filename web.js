@@ -54,19 +54,32 @@ async function waitVar(wv, varName, timeout) {
 async function waitPageReady(wv, timeout) {
   const start = Date.now();
 
-  if (wv) {
-    wv._pageReady = false;
-  }
-
-  while (Date.now() - start < (timeout || PAGE_TIMEOUT)) {
-    if (wv && wv._pageReady) {
+  while (
+    Date.now() - start <
+    (timeout || PAGE_TIMEOUT)
+  ) {
+    if (
+      wv &&
+      wv._pageReady
+    ) {
       return true;
     }
 
     try {
-      const rs = await evalJS(wv, "document.readyState");
+      const rs =
+        await evalJS(
+          wv,
+          "document.readyState"
+        );
 
-      if (rs === "interactive" || rs === "complete") {
+      if (
+        rs === "interactive" ||
+        rs === "complete"
+      ) {
+        if (wv) {
+          wv._pageReady = true;
+        }
+
         return true;
       }
     } catch (e) {
@@ -76,7 +89,11 @@ async function waitPageReady(wv, timeout) {
     await delay(300);
   }
 
-  Core.addLog("waitPageReady timeout", "warn");
+  Core.addLog(
+    "waitPageReady timeout",
+    "warn"
+  );
+
   return false;
 }
 
