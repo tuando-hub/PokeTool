@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "axios": "^1.19.0",
+    "imap": "^0.8.19",
+    "mailparser": "^3.9.15"
+  }
+}
