@@ -92,64 +92,411 @@ async function installLoginHook(wv) {
   `);
 }
 
-async function clickLoginAndWait(wv, email, password, fill) {
-  await Web.evalJS(wv, `window.__LOGIN_RESULT = "";`);
+async function clickLoginAndWait(
+  wv,
+  email,
+  password
+) {
+  await Web.evalJS(
+    wv,
+    `window.__LOGIN_RESULT = "";`
+  );
 
-  if (fill !== false) {
+  // =========================
+  // FILL LOGIN
+  // giống file test
+  // =========================
+
+  const fillRaw =
     await Web.evalJS(wv, `
 (() => {
-  const mail = document.querySelector("#login-form-email");
-  const pass = document.querySelector("#current-password");
 
-  if (mail) {
-    mail.value = ${JSON.stringify(email)};
-    mail.dispatchEvent(new Event("input", { bubbles:true }));
-    mail.dispatchEvent(new Event("change", { bubbles:true }));
+  const email =
+    ${JSON.stringify(email)};
+
+  const password =
+    ${JSON.stringify(password)};
+
+  function setValue(
+    el,
+    value
+  ) {
+    if (!el) {
+      return false;
+    }
+
+    try {
+      el.focus();
+
+      const proto =
+        Object.getPrototypeOf(el);
+
+      const desc =
+        Object.getOwnPropertyDescriptor(
+          proto,
+          "value"
+        );
+
+      if (
+        desc &&
+        desc.set
+      ) {
+        desc.set.call(
+          el,
+          value
+        );
+      } else {
+        el.value =
+          value;
+      }
+
+      el.dispatchEvent(
+        new Event(
+          "input",
+          {
+            bubbles: true
+          }
+        )
+      );
+
+      el.dispatchEvent(
+        new Event(
+          "change",
+          {
+            bubbles: true
+          }
+        )
+      );
+
+      el.blur();
+
+      return true;
+
+    } catch(e) {
+      return false;
+    }
   }
 
-  if (pass) {
-    pass.value = ${JSON.stringify(password)};
-    pass.dispatchEvent(new Event("input", { bubbles:true }));
-    pass.dispatchEvent(new Event("change", { bubbles:true }));
-  }
+  const mail =
+    document.querySelector(
+      "#login-form-email"
+    );
+
+  const pass =
+    document.querySelector(
+      "#current-password"
+    );
+
+  return JSON.stringify({
+    mailOK:
+      setValue(
+        mail,
+        email
+      ),
+
+    passOK:
+      setValue(
+        pass,
+        password
+      )
+  });
+
 })();
     `);
+
+  let fillResult = {};
+
+  try {
+    fillResult =
+      JSON.parse(
+        fillRaw || "{}"
+      );
+  } catch (e) {
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_FILL_PARSE_FAIL"
+    };
   }
 
-  await Web.tapButton(wv, "#form1Button");
+  if (
+    !fillResult.mailOK ||
+    !fillResult.passOK
+  ) {
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_FILL_FAILED"
+    };
+  }
 
-  const loginRaw = await Web.waitVar(wv, "__LOGIN_RESULT", 15000);
+  await Web.delay(1000);
+
+  // =========================
+  // HUMAN-LIKE TAP
+  // chỉ 1 lần
+  // =========================
+
+  const tapResult =
+    await Web.evalJS(wv, `
+(() => {
+
+  const el =
+    document.querySelector(
+      "#form1Button"
+    );
+
+  if (!el) {
+    return "NO_BUTTON";
+  }
+
+  try {
+    el.scrollIntoView({
+      block: "center",
+      inline: "center"
+    });
+
+    const rect =
+      el.getBoundingClientRect();
+
+    const x =
+      rect.left +
+      rect.width / 2;
+
+    const y =
+      rect.top +
+      rect.height / 2;
+
+    function fireMouse(
+      name,
+      buttons
+    ) {
+      try {
+        el.dispatchEvent(
+          new MouseEvent(
+            name,
+            {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: y,
+              screenX: x,
+              screenY: y,
+              button: 0,
+              buttons:
+                buttons
+            }
+          )
+        );
+      } catch(e) {}
+    }
+
+    function firePointer(
+      name,
+      buttons
+    ) {
+      try {
+        if (
+          typeof PointerEvent ===
+          "undefined"
+        ) {
+          return;
+        }
+
+        el.dispatchEvent(
+          new PointerEvent(
+            name,
+            {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType:
+                "touch",
+              isPrimary: true,
+              clientX: x,
+              clientY: y,
+              screenX: x,
+              screenY: y,
+              button: 0,
+              buttons:
+                buttons
+            }
+          )
+        );
+      } catch(e) {}
+    }
+
+    firePointer(
+      "pointerover",
+      0
+    );
+
+    firePointer(
+      "pointerenter",
+      0
+    );
+
+    firePointer(
+      "pointerdown",
+      1
+    );
+
+    fireMouse(
+      "mouseover",
+      0
+    );
+
+    fireMouse(
+      "mouseenter",
+      0
+    );
+
+    fireMouse(
+      "mousedown",
+      1
+    );
+
+    firePointer(
+      "pointerup",
+      0
+    );
+
+    fireMouse(
+      "mouseup",
+      0
+    );
+
+    fireMouse(
+      "click",
+      0
+    );
+
+    return "TAPPED";
+
+  } catch(e) {
+    return (
+      "ERROR:" +
+      String(
+        e.message || e
+      )
+    );
+  }
+
+})();
+    `);
+
+  if (
+    tapResult !==
+    "TAPPED"
+  ) {
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_TAP_FAILED_" +
+        tapResult
+    };
+  }
+
+  // =========================
+  // WAIT LOGIN API HOOK
+  // =========================
+
+  const loginRaw =
+    await Web.waitVar(
+      wv,
+      "__LOGIN_RESULT",
+      15000
+    );
 
   if (!loginRaw) {
-    return { ok: false, retry: true, reason: "NO_LOGIN_RESULT" };
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "NO_LOGIN_RESULT"
+    };
   }
 
-  const loginCap = JSON.parse(loginRaw);
+  let loginCap = {};
 
-  if (loginCap.status !== 200 || !loginCap.response) {
-    return { ok: false, retry: true, reason: "LOGIN_EMPTY_OR_BLOCKED" };
+  try {
+    loginCap =
+      JSON.parse(
+        loginRaw
+      );
+  } catch (e) {
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_CAPTURE_PARSE_FAIL"
+    };
+  }
+
+  if (
+    loginCap.status !== 200 ||
+    !loginCap.response
+  ) {
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_EMPTY_OR_BLOCKED"
+    };
   }
 
   let loginJson = {};
 
   try {
-    loginJson = JSON.parse(loginCap.response || "{}");
+    loginJson =
+      JSON.parse(
+        loginCap.response ||
+        "{}"
+      );
   } catch (e) {
-    return { ok: false, retry: true, reason: "LOGIN_JSON_PARSE_FAIL" };
+    return {
+      ok: false,
+      retry: true,
+      reason:
+        "LOGIN_JSON_PARSE_FAIL"
+    };
   }
 
-  if (loginJson.errorCode === 403042) {
-    return { ok: false, retry: false, reason: "INVALID_LOGIN" };
+  if (
+    loginJson.errorCode ===
+    403042
+  ) {
+    return {
+      ok: false,
+      retry: false,
+      reason:
+        "INVALID_LOGIN"
+    };
   }
 
-  if (loginJson.errorCode === 403101) {
-    return { ok: true, cap: loginCap, json: loginJson };
+  if (
+    loginJson.errorCode ===
+    403101
+  ) {
+    return {
+      ok: true,
+      cap:
+        loginCap,
+      json:
+        loginJson
+    };
   }
 
   return {
     ok: false,
     retry: true,
-    reason: "LOGIN_CODE_" + loginJson.errorCode
+    reason:
+      "LOGIN_CODE_" +
+      loginJson.errorCode
   };
 }
 
@@ -165,12 +512,12 @@ async function loginWithRetry(wv, email, password, maxRetry) {
 
     await installLoginHook(wv);
     
-    const rs = await clickLoginAndWait(
-      wv,
-      email,
-      password,
-      i === 1
-    );
+    const rs =
+      await clickLoginAndWait(
+        wv,
+        email,
+        password
+      );
 
     if (rs.ok) return rs;
     if (rs.retry === false) return rs;
@@ -271,7 +618,7 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
 
     await Web.tapButton(wv, "#authBtn, #certify, button[type=submit]");
 
-    const raw = await Web.waitVar(wv, "__OTP_RESULT", 30000);
+    const raw = await Web.waitVar(wv, "__OTP_RESULT", 7000);
 
     if (raw) {
       try {
@@ -300,8 +647,7 @@ async function verifyOtp(wv, email, otp, mode, form, stopCheck) {
           )
         ) {
           Core.addLog("OTP OK: " + currentOtp, "success");
-          await Web.waitPageReady(wv, 30000);
-          await Web.delay(1500);
+          await Web.waitPageReady(wv, 4000);
           return true;
         }
 

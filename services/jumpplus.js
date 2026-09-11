@@ -3,6 +3,7 @@
 const Web = require("../web");
 const OTP = require("../otp");
 const Session = require("./session");
+
 const Core = require("../core");
 
 const PREMIUM_URL =
@@ -878,7 +879,7 @@ async function registerAccount({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(wv);
       } catch (_) {
         //
       }
@@ -1066,7 +1067,7 @@ async function registerAccount({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(wv);
       } catch (_) {
         //
       }
@@ -2526,7 +2527,7 @@ async function loginOnly({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(wv);
       } catch (_) {
         //
       }
@@ -2604,7 +2605,7 @@ async function loginOnly({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(wv);
       } catch (_) {
         //
       }

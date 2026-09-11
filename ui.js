@@ -68,24 +68,14 @@ let g_importData = null;
 // ============================================================
 
 function scheduleRefresh(changeType) {
-  const type =
-    typeof changeType === "string"
-      ? changeType
-      : "state";
+  const type = typeof changeType === "string" ? changeType : "state";
 
-  if (
-    type === "queue" ||
-    type === "result" ||
-    type === "reset"
-  ) {
+  if (type === "queue" || type === "result" || type === "reset") {
     queueDirty = true;
     resultDirty = true;
   }
 
-  if (
-    type === "tab" ||
-    type === "mode"
-  ) {
+  if (type === "tab" || type === "mode") {
     tabsDirty = true;
   }
 
@@ -113,11 +103,7 @@ function pressFeedback(sender, handler) {
     try {
       handler();
     } catch (error) {
-      Core.addLog(
-        "Button error: " +
-          String(error.message || error),
-        "error"
-      );
+      Core.addLog("Button error: " + String(error.message || error), "error");
     }
   }
 
@@ -156,58 +142,31 @@ function pressFeedback(sender, handler) {
 }
 
 function animateProgress(percent, force) {
-  const fill =
-    $("progressFill");
+  const fill = $("progressFill");
 
   if (!fill) return;
 
-  const safePercent =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Number(percent) || 0
-      )
-    );
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
 
-  const trackWidth =
-    CARD_W - 44;
+  const trackWidth = CARD_W - 44;
 
   const targetWidth =
     safePercent <= 0
       ? 1
-      : Math.max(
-          1,
-          Math.round(
-            trackWidth *
-              safePercent /
-              100
-          )
-        );
+      : Math.max(1, Math.round((trackWidth * safePercent) / 100));
 
-  if (
-    !force &&
-    targetWidth ===
-      lastProgressWidth
-  ) {
+  if (!force && targetWidth === lastProgressWidth) {
     return;
   }
 
-  lastProgressWidth =
-    targetWidth;
+  lastProgressWidth = targetWidth;
 
   try {
     fill.updateLayout(make => {
-      make.width.equalTo(
-        targetWidth
-      );
+      make.width.equalTo(targetWidth);
     });
 
-    if (
-      fill.super &&
-      typeof fill.super.layoutIfNeeded ===
-        "function"
-    ) {
+    if (fill.super && typeof fill.super.layoutIfNeeded === "function") {
       $ui.animate({
         duration: 0.18,
 
@@ -219,9 +178,7 @@ function animateProgress(percent, force) {
   } catch (error) {
     try {
       fill.updateLayout(make => {
-        make.width.equalTo(
-          targetWidth
-        );
+        make.width.equalTo(targetWidth);
       });
     } catch (layoutError) {
       //
@@ -264,60 +221,24 @@ function modeTitle(mode) {
 
 function modeMeta(mode) {
   const map = {
-    Lottery: [
-      "🎯",
-      "Lottery",
-      "応募・抽選"
-    ],
+    Lottery: ["🎯", "Lottery", "応募・抽選"],
 
-    Buy: [
-      "🛒",
-      "Buy",
-      "購入"
-    ],
-    
-    BuyJumpPlus: [
-      "🛍",
-      "Buy Jump+",
-      "JUMP購入"
-    ],
+    Buy: ["🛒", "Buy", "購入"],
 
-    Create: [
-      "🛠",
-      "Create",
-      "新規アカウント"
-    ],
+    BuyJumpPlus: ["🛍", "Buy Jump+", "JUMP購入"],
 
-    ChangeProfile: [
-      "📝",
-      "Change Profile",
-      "プロフィール変更"
-    ],
+    Create: ["🛠", "Create", "新規アカウント"],
 
-    ChangeEmail: [
-      "📧",
-      "Change Email",
-      "メール変更"
-    ],
+    ChangeProfile: ["📝", "Change Profile", "プロフィール変更"],
 
-    CheckResult: [
-      "🔍",
-      "Check Result",
-      "結果確認"
-    ],
+    ChangeEmail: ["📧", "Change Email", "メール変更"],
 
-    ChangeProfileOrder: [
-      "📦",
-      "Change Profile Order",
-      "注文住所変更"
-    ]
+    CheckResult: ["🔍", "Check Result", "結果確認"],
+
+    ChangeProfileOrder: ["📦", "Change Profile Order", "注文住所変更"]
   };
 
-  return map[mode] || [
-    "⚙️",
-    mode || "Mode",
-    ""
-  ];
+  return map[mode] || ["⚙️", mode || "Mode", ""];
 }
 
 // ============================================================
@@ -342,11 +263,7 @@ function render() {
 
         layout: $layout.fill,
 
-        views: [
-          contentView(),
-          webHost(),
-          bottomDock()
-        ]
+        views: [contentView(), webHost(), bottomDock()]
       }
     ]
   });
@@ -357,15 +274,9 @@ function render() {
     Core.onChange(change => {
       let type = "state";
 
-      if (
-        typeof change === "string"
-      ) {
+      if (typeof change === "string") {
         type = change;
-      } else if (
-        change &&
-        typeof change.type ===
-          "string"
-      ) {
+      } else if (change && typeof change.type === "string") {
         type = change.type;
       }
 
@@ -402,8 +313,7 @@ function webHost() {
       make.bottom.inset(BOTTOM_H);
     },
 
-    views: [
-    ]
+    views: []
   };
 }
 
@@ -441,9 +351,7 @@ function bottomDock() {
       bgcolor: $color(UI.TAB_BG),
 
       borderWidth: 1,
-      borderColor: $color(
-        UI.CARD_BORDER
-      )
+      borderColor: $color(UI.CARD_BORDER)
     },
 
     layout: make => {
@@ -477,9 +385,7 @@ function bottomDock() {
             layout: make => {
               make.left.equalTo(14);
               make.centerY.equalTo();
-              make.size.equalTo(
-                $size(8, 8)
-              );
+              make.size.equalTo($size(8, 8));
             }
           },
 
@@ -491,14 +397,9 @@ function bottomDock() {
 
               text: "Ready",
 
-              textColor: $color(
-                UI.TEXT_SOFT
-              ),
+              textColor: $color(UI.TEXT_SOFT),
 
-              font: $font(
-                "bold",
-                10
-              ),
+              font: $font("bold", 10),
 
               minimumScaleFactor: 0.5,
               adjustsFontSizeToFitWidth: true
@@ -535,155 +436,126 @@ function createTabButtons() {
     ["Result", "checkmark.circle.fill", "Result"]
   ];
 
-  const width =
-    sw / tabs.length;
+  const width = sw / tabs.length;
 
-  return tabs.map(
-    (tab, index) => {
-      return {
-        type: "view",
+  return tabs.map((tab, index) => {
+    return {
+      type: "view",
 
-        props: {
-          id:
-            "tabContainer_" +
-            tab[0]
+      props: {
+        id: "tabContainer_" + tab[0]
+      },
+
+      layout: make => {
+        make.left.equalTo(index * width);
+
+        make.top.bottom.equalTo(0);
+        make.width.equalTo(width);
+      },
+
+      views: [
+        {
+          type: "view",
+
+          props: {
+            id: "tabIndicator_" + tab[0],
+
+            bgcolor: $color(UI.TAB_ACTIVE),
+
+            radius: 1.5,
+            hidden: true
+          },
+
+          layout: make => {
+            make.top.equalTo(0);
+            make.centerX.equalTo();
+            make.width.equalTo(30);
+            make.height.equalTo(3);
+          }
         },
 
-        layout: make => {
-          make.left.equalTo(
-            index * width
-          );
+        {
+          type: "image",
 
-          make.top.bottom.equalTo(0);
-          make.width.equalTo(width);
+          props: {
+            id: "tabIcon_" + tab[0],
+
+            symbol: tab[1],
+            tintColor: $color(UI.TAB_INACTIVE)
+          },
+
+          layout: make => {
+            make.top.equalTo(8);
+            make.centerX.equalTo();
+            make.size.equalTo($size(23, 23));
+          }
         },
 
-        views: [
-          {
-            type: "view",
+        {
+          type: "label",
 
-            props: {
-              id:
-                "tabIndicator_" +
-                tab[0],
+          props: {
+            id: "tabLabel_" + tab[0],
 
-              bgcolor: $color(
-                UI.TAB_ACTIVE
-              ),
+            text: tab[2],
 
-              radius: 1.5,
-              hidden: true
-            },
+            align: $align.center,
 
-            layout: make => {
-              make.top.equalTo(0);
-              make.centerX.equalTo();
-              make.width.equalTo(30);
-              make.height.equalTo(3);
-            }
+            textColor: $color(UI.TAB_INACTIVE),
+
+            font: $font("bold", 10)
           },
 
-          {
-            type: "image",
+          layout: make => {
+            make.top.equalTo(34);
+            make.left.right.equalTo(0);
+            make.height.equalTo(18);
+          }
+        },
 
-            props: {
-              id:
-                "tabIcon_" +
-                tab[0],
+        {
+          type: "button",
 
-              symbol: tab[1],
-              tintColor: $color(
-                UI.TAB_INACTIVE
-              )
-            },
-
-            layout: make => {
-              make.top.equalTo(8);
-              make.centerX.equalTo();
-              make.size.equalTo(
-                $size(23, 23)
-              );
-            }
+          props: {
+            id: "tab_" + tab[0],
+            title: "",
+            bgcolor: $color("clear")
           },
 
-          {
-            type: "label",
+          layout: $layout.fill,
 
-            props: {
-              id:
-                "tabLabel_" +
-                tab[0],
-
-              text: tab[2],
-
-              align: $align.center,
-
-              textColor: $color(
-                UI.TAB_INACTIVE
-              ),
-
-              font: $font(
-                "bold",
-                10
-              )
-            },
-
-            layout: make => {
-              make.top.equalTo(34);
-              make.left.right.equalTo(0);
-              make.height.equalTo(18);
-            }
-          },
-
-          {
-            type: "button",
-
-            props: {
-              id: "tab_" + tab[0],
-              title: "",
-              bgcolor: $color("clear")
-            },
-
-            layout: $layout.fill,
-
-            events: {
-              tapped(sender) {
-                if (
-                  Core.getState().tab ===
-                  tab[0]
-                ) {
-                  return;
-                }
-
-                try {
-                  sender.super.alpha =
-                    0.65;
-
-                  $ui.animate({
-                    duration: 0.12,
-
-                    animation: () => {
-                      sender.super.alpha =
-                        1;
-                    }
-                  });
-                } catch (error) {
-                  //
-                }
-
-                Core.setTab(tab[0]);
-
-                tabsDirty = true;
-                dashboardDirty = true;
-
-                renderCurrentTab();
+          events: {
+            tapped(sender) {
+              if (Core.getState().tab === tab[0]) {
+                return;
               }
+
+              try {
+                sender.super.alpha = 0.65;
+
+                $ui.animate({
+                  duration: 0.12,
+
+                  animation: () => {
+                    sender.super.alpha = 1;
+                  }
+                });
+              } catch (error) {
+                //
+              }
+
+              Core.setTab(tab[0]);
+
+              tabsDirty = true;
+              dashboardDirty = true;
+
+              renderCurrentTab();
             }
           }
-        ]
-      };
-    }
-  );
+        }
+      ]
+    };
+  });
 }
 
 // ============================================================
@@ -707,26 +579,20 @@ function clearContent() {
 }
 
 function renderCurrentTab() {
-  const state =
-    Core.getState();
+  const state = Core.getState();
 
-  const content =
-    $("content");
+  const content = $("content");
 
-  const host =
-    $("webHost");
+  const host = $("webHost");
 
-  const browserSelected =
-    state.tab === "Browser";
+  const browserSelected = state.tab === "Browser";
 
   if (host) {
-    host.hidden =
-      !browserSelected;
+    host.hidden = !browserSelected;
   }
 
   if (content) {
-    content.hidden =
-      browserSelected;
+    content.hidden = browserSelected;
   }
 
   if (!content) {
@@ -736,8 +602,14 @@ function renderCurrentTab() {
 
   if (browserSelected) {
     lastTab = "Browser";
+
+    try {
+      require("./web").layoutActiveWebViews();
+    } catch (_) {}
+
     tabsDirty = true;
     scheduleRefresh("tab");
+
     return;
   }
 
@@ -753,8 +625,7 @@ function renderCurrentTab() {
 
   clearContent();
 
-  content.contentOffset =
-    $point(0, 0);
+  content.contentOffset = $point(0, 0);
 
   let pageView = null;
   let height = 900;
@@ -762,10 +633,9 @@ function renderCurrentTab() {
   switch (state.tab) {
     case "Dashboard":
       lastProgressWidth = -1;
-    
-      pageView =
-        dashboardPage();
-    
+
+      pageView = dashboardPage();
+
       height = 660;
       break;
 
@@ -785,8 +655,7 @@ function renderCurrentTab() {
   if (pageView) {
     content.add(pageView);
 
-    content.contentSize =
-      $size(sw, height);
+    content.contentSize = $size(sw, height);
   }
 
   dashboardDirty = true;
@@ -802,230 +671,166 @@ function renderCurrentTab() {
 function dashboardPage() {
   return page(
     "dashboardPage",
-    660,
+
+    730,
+
     [
       headerCard(12),
+
       statsCard(112),
+
       progressCard(250),
+
       currentTaskCard(344),
-      runCard(572)
+
+      workerCard(560),
+
+      runCard(638)
     ]
   );
 }
 
 function headerCard(top) {
   const logoSize = 54;
-  const titleLeft =
-    18 + logoSize + 12;
+  const titleLeft = 18 + logoSize + 12;
 
-  return card(
-    "headerCard",
-    top,
-    88,
-    [
-      {
-        type: "view",
+  return card("headerCard", top, 88, [
+    {
+      type: "view",
 
-        props: {
-          bgcolor: $rgba(99, 102, 241, 0.12),
-          radius: 31,
+      props: {
+        bgcolor: $rgba(99, 102, 241, 0.12),
+        radius: 31,
 
-          borderWidth: 1,
-          borderColor: $rgba(
-            99,
-            102,
-            241,
-            0.35
-          )
-        },
-
-        layout: make => {
-          make.left.equalTo(14);
-          make.centerY.equalTo();
-          make.size.equalTo(
-            $size(62, 62)
-          );
-        }
+        borderWidth: 1,
+        borderColor: $rgba(99, 102, 241, 0.35)
       },
 
-      {
-        type: "image",
+      layout: make => {
+        make.left.equalTo(14);
+        make.centerY.equalTo();
+        make.size.equalTo($size(62, 62));
+      }
+    },
 
-        props: {
-          src: "assets/IMG_3233.PNG",
-          radius: 27
-        },
+    {
+      type: "image",
 
-        layout: make => {
-          make.left.equalTo(18);
-          make.centerY.equalTo();
-          make.size.equalTo(
-            $size(
-              logoSize,
-              logoSize
-            )
-          );
-        }
+      props: {
+        src: "assets/IMG_3233.PNG",
+        radius: 27
       },
 
-      {
-        type: "label",
+      layout: make => {
+        make.left.equalTo(18);
+        make.centerY.equalTo();
+        make.size.equalTo($size(logoSize, logoSize));
+      }
+    },
 
-        props: {
-          text: "PokeTool",
+    {
+      type: "label",
 
-          textColor: $color("#FDE047"),
-          font: $font("bold", 25),
+      props: {
+        text: "PokeTool",
 
-          lines: 1
-        },
+        textColor: $color("#FDE047"),
+        font: $font("bold", 25),
 
-        layout: make => {
-          make.left.equalTo(titleLeft);
-          make.top.equalTo(20);
-
-          make.width.equalTo(130);
-          make.height.equalTo(30);
-        }
+        lines: 1
       },
 
-      {
-        type: "label",
+      layout: make => {
+        make.left.equalTo(titleLeft);
+        make.top.equalTo(20);
 
-        props: {
-          id: "versionText",
+        make.width.equalTo(130);
+        make.height.equalTo(30);
+      }
+    },
 
-          text: "Version 3.0.0",
+    {
+      type: "label",
 
-          textColor: $color(UI.TEXT_SOFT),
-          font: $font("bold", 12)
-        },
+      props: {
+        id: "versionText",
 
-        layout: make => {
-          make.left.equalTo(titleLeft);
-          make.top.equalTo(52);
+        text: "Version 3.0.0",
 
-          make.width.equalTo(130);
-          make.height.equalTo(18);
-        }
+        textColor: $color(UI.TEXT_SOFT),
+        font: $font("bold", 12)
       },
 
-      {
-        type: "button",
+      layout: make => {
+        make.left.equalTo(titleLeft);
+        make.top.equalTo(52);
 
-        props: {
-          id: "modeBtn",
+        make.width.equalTo(130);
+        make.height.equalTo(18);
+      }
+    },
 
-          title:
-            modeTitle(
-              Core.getState().mode
-            ) + "  ▼",
+    {
+      type: "button",
 
-          bgcolor: $color(
-            UI.CARD_BG_SOFT
-          ),
+      props: {
+        id: "modeBtn",
 
-          titleColor: $color(
-            UI.TEXT
-          ),
+        title: modeTitle(Core.getState().mode) + "  ▼",
 
-          borderWidth: 1.2,
-          borderColor: $color(
-            "#6366F1"
-          ),
+        bgcolor: $color(UI.CARD_BG_SOFT),
 
-          radius: 21,
+        titleColor: $color(UI.TEXT),
 
-          font: $font(
-            "bold",
-            sw < 390 ? 10 : 12
-          ),
+        borderWidth: 1.2,
+        borderColor: $color("#6366F1"),
 
-          minimumScaleFactor: 0.35,
-          adjustsFontSizeToFitWidth: true
-        },
+        radius: 21,
 
-        layout: make => {
-          make.right.inset(14);
-          make.centerY.equalTo();
+        font: $font("bold", sw < 390 ? 10 : 12),
 
-          make.width.equalTo(
-            sw < 390 ? 135 : 180
-          );
+        minimumScaleFactor: 0.35,
+        adjustsFontSizeToFitWidth: true
+      },
 
-          make.height.equalTo(42);
-        },
+      layout: make => {
+        make.right.inset(14);
+        make.centerY.equalTo();
 
-        events: {
-          tapped(sender) {
-            pressFeedback(
-              sender,
-              showModeMenu
-            );
-          }
+        make.width.equalTo(sw < 390 ? 135 : 180);
+
+        make.height.equalTo(42);
+      },
+
+      events: {
+        tapped(sender) {
+          pressFeedback(sender, showModeMenu);
         }
       }
-    ]
-  );
+    }
+  ]);
 }
 
 function statsCard(top) {
-  return card(
-    "statsCard",
-    top,
-    124,
-    [
-      statBox(
-        "statTotal",
-        "Total",
-        0,
-        T.primary,
-        "◉"
-      ),
+  return card("statsCard", top, 124, [
+    statBox("statTotal", "Total", 0, T.primary, "◉"),
 
-      statBox(
-        "statWaiting",
-        "Wait",
-        1,
-        T.warning,
-        "◔"
-      ),
+    statBox("statWaiting", "Wait", 1, T.warning, "◔"),
 
-      statBox(
-        "statDone",
-        "Done",
-        2,
-        T.success,
-        "✓"
-      ),
+    statBox("statDone", "Done", 2, T.success, "✓"),
 
-      statBox(
-        "statFailed",
-        "Fail",
-        3,
-        T.danger,
-        "×"
-      )
-    ]
-  );
+    statBox("statFailed", "Fail", 3, T.danger, "×")
+  ]);
 }
 
-function statBox(
-  id,
-  title,
-  index,
-  color,
-  icon
-) {
+function statBox(id, title, index, color, icon) {
   const width = CARD_W / 4;
 
   return {
     type: "view",
 
     layout: make => {
-      make.left.equalTo(
-        index * width
-      );
+      make.left.equalTo(index * width);
 
       make.top.bottom.equalTo(0);
       make.width.equalTo(width);
@@ -1037,9 +842,7 @@ function statBox(
             type: "view",
 
             props: {
-              bgcolor: $color(
-                UI.CARD_BORDER
-              )
+              bgcolor: $color(UI.CARD_BORDER)
             },
 
             layout: make => {
@@ -1067,12 +870,7 @@ function statBox(
           radius: 18,
 
           borderWidth: 1,
-          borderColor: $rgba(
-            255,
-            255,
-            255,
-            0.15
-          ),
+          borderColor: $rgba(255, 255, 255, 0.15),
 
           font: $font("bold", 16)
         },
@@ -1081,9 +879,7 @@ function statBox(
           make.centerX.equalTo();
           make.top.equalTo(18);
 
-          make.size.equalTo(
-            $size(36, 36)
-          );
+          make.size.equalTo($size(36, 36));
         }
       },
 
@@ -1120,9 +916,7 @@ function statBox(
           align: $align.center,
 
           font: $font("bold", 12),
-          textColor: $color(
-            UI.TEXT_SOFT
-          )
+          textColor: $color(UI.TEXT_SOFT)
         },
 
         layout: make => {
@@ -1136,230 +930,179 @@ function statBox(
 }
 
 function progressCard(top) {
-  return card(
-    "progressCard",
-    top,
-    82,
-    [
-      {
-        type: "label",
+  return card("progressCard", top, 82, [
+    {
+      type: "label",
 
-        props: {
-          text: "Progress",
+      props: {
+        text: "Progress",
 
-          textColor: $color(T.text),
-          font: $font("bold", 21)
-        },
-
-        layout: make => {
-          make.left.equalTo(18);
-          make.top.equalTo(14);
-          make.height.equalTo(26);
-        }
+        textColor: $color(T.text),
+        font: $font("bold", 21)
       },
 
-      {
-        type: "label",
-
-        props: {
-          id: "progressText",
-
-          text: "0%  •  0/0",
-
-          align: $align.right,
-
-          font: $font("bold", 18),
-          textColor: $color("#FDE047")
-        },
-
-        layout: make => {
-          make.top.equalTo(14);
-          make.right.inset(20);
-
-          make.width.equalTo(150);
-          make.height.equalTo(26);
-        }
-      },
-
-      {
-        type: "view",
-
-        props: {
-          bgcolor: $color("#273449"),
-          radius: 7,
-
-          borderWidth: 1,
-          borderColor: $rgba(
-            148,
-            163,
-            184,
-            0.1
-          )
-        },
-
-        layout: make => {
-          make.left.right.inset(22);
-          make.top.equalTo(56);
-          make.height.equalTo(14);
-        }
-      },
-
-      {
-        type: "view",
-
-        props: {
-          id: "progressFill",
-
-          bgcolor: $color(T.success),
-          radius: 7
-        },
-
-        layout: make => {
-          make.left.equalTo(22);
-          make.top.equalTo(56);
-
-          make.width.equalTo(1);
-          make.height.equalTo(14);
-        }
+      layout: make => {
+        make.left.equalTo(18);
+        make.top.equalTo(14);
+        make.height.equalTo(26);
       }
-    ]
-  );
+    },
+
+    {
+      type: "label",
+
+      props: {
+        id: "progressText",
+
+        text: "0%  •  0/0",
+
+        align: $align.right,
+
+        font: $font("bold", 18),
+        textColor: $color("#FDE047")
+      },
+
+      layout: make => {
+        make.top.equalTo(14);
+        make.right.inset(20);
+
+        make.width.equalTo(150);
+        make.height.equalTo(26);
+      }
+    },
+
+    {
+      type: "view",
+
+      props: {
+        bgcolor: $color("#273449"),
+        radius: 7,
+
+        borderWidth: 1,
+        borderColor: $rgba(148, 163, 184, 0.1)
+      },
+
+      layout: make => {
+        make.left.right.inset(22);
+        make.top.equalTo(56);
+        make.height.equalTo(14);
+      }
+    },
+
+    {
+      type: "view",
+
+      props: {
+        id: "progressFill",
+
+        bgcolor: $color(T.success),
+        radius: 7
+      },
+
+      layout: make => {
+        make.left.equalTo(22);
+        make.top.equalTo(56);
+
+        make.width.equalTo(1);
+        make.height.equalTo(14);
+      }
+    }
+  ]);
 }
 
 function currentTaskCard(top) {
-  return card(
-    "currentCard",
-    top,
-    210,
-    [
-      {
-        type: "label",
+  return card("currentCard", top, 210, [
+    {
+      type: "label",
 
-        props: {
-          text: "Current Task",
+      props: {
+        text: "Current Task",
 
-          textColor: $color(T.text),
-          font: $font("bold", 21)
-        },
-
-        layout: make => {
-          make.left.equalTo(18);
-          make.top.equalTo(14);
-          make.height.equalTo(28);
-        }
+        textColor: $color(T.text),
+        font: $font("bold", 21)
       },
 
-      {
-        type: "label",
+      layout: make => {
+        make.left.equalTo(18);
+        make.top.equalTo(14);
+        make.height.equalTo(28);
+      }
+    },
 
-        props: {
-          id: "curIndex",
+    {
+      type: "label",
 
-          text: "0 / 0  •  00:00",
+      props: {
+        id: "curIndex",
 
-          align: $align.right,
+        text: "0 / 0  •  00:00",
 
-          textColor: $color(
-            UI.MUTED
-          ),
+        align: $align.right,
 
-          font: $font(
-            "bold",
-            11
-          )
-        },
+        textColor: $color(UI.MUTED),
 
-        layout: make => {
-          make.right.inset(18);
-          make.top.equalTo(17);
-          make.width.equalTo(150);
-          make.height.equalTo(22);
-        }
+        font: $font("bold", 11)
       },
 
-      {
-        type: "label",
+      layout: make => {
+        make.right.inset(18);
+        make.top.equalTo(17);
+        make.width.equalTo(150);
+        make.height.equalTo(22);
+      }
+    },
 
-        props: {
-          id: "curEmail",
-          text: "-",
+    {
+      type: "label",
 
-          textColor: $color(
-            "#FDE047"
-          ),
+      props: {
+        id: "curEmail",
+        text: "-",
 
-          font: $font(
-            "bold",
-            14
-          ),
+        textColor: $color("#FDE047"),
 
-          minimumScaleFactor: 0.45,
-          adjustsFontSizeToFitWidth: true
-        },
+        font: $font("bold", 14),
 
-        layout: make => {
-          make.left.equalTo(18);
-          make.top.equalTo(48);
-          make.right.inset(18);
-          make.height.equalTo(24);
-        }
+        minimumScaleFactor: 0.45,
+        adjustsFontSizeToFitWidth: true
       },
 
-      infoLine(
-        "curMode",
-        "MODE",
-        78
-      ),
+      layout: make => {
+        make.left.equalTo(18);
+        make.top.equalTo(48);
+        make.right.inset(18);
+        make.height.equalTo(24);
+      }
+    },
 
-      infoLine(
-        "curStep",
-        "STEP",
-        114
-      ),
+    infoLine("curMode", "MODE", 78),
 
-      infoLine(
-        "curStatus",
-        "STATUS",
-        150
-      )
-    ]
-  );
+    infoLine("curStep", "STEP", 114),
+
+    infoLine("curStatus", "STATUS", 150)
+  ]);
 }
 
-function infoLine(
-  id,
-  label,
-  top
-) {
-  const isStatus =
-    id === "curStatus";
+function infoLine(id, label, top) {
+  const isStatus = id === "curStatus";
 
   return {
     type: "view",
 
     props: {
-      bgcolor: $color(
-        UI.CARD_BG_SOFT
-      ),
+      bgcolor: $color(UI.CARD_BG_SOFT),
 
       radius: 10,
 
       borderWidth: 1,
-      borderColor: $rgba(
-        148,
-        163,
-        184,
-        0.08
-      )
+      borderColor: $rgba(148, 163, 184, 0.08)
     },
 
     layout: make => {
       make.left.right.inset(16);
       make.top.equalTo(top);
 
-      make.height.equalTo(
-        isStatus ? 34 : 30
-      );
+      make.height.equalTo(isStatus ? 34 : 30);
     },
 
     views: [
@@ -1369,9 +1112,7 @@ function infoLine(
         props: {
           text: label,
 
-          textColor: $color(
-            UI.MUTED
-          ),
+          textColor: $color(UI.MUTED),
 
           font: $font("bold", 11)
         },
@@ -1389,9 +1130,7 @@ function infoLine(
         type: "view",
 
         props: {
-          bgcolor: $color(
-            UI.CARD_BORDER
-          )
+          bgcolor: $color(UI.CARD_BORDER)
         },
 
         layout: make => {
@@ -1411,13 +1150,9 @@ function infoLine(
 
           text: "-",
 
-          textColor: $color(
-            UI.TEXT
-          ),
+          textColor: $color(UI.TEXT),
 
-          font: $font(
-            isStatus ? 12 : 13
-          ),
+          font: $font(isStatus ? 12 : 13),
 
           lines: isStatus ? 2 : 1,
 
@@ -1430,9 +1165,177 @@ function infoLine(
           make.right.inset(10);
           make.centerY.equalTo();
 
-          make.height.equalTo(
-            isStatus ? 30 : 24
-          );
+          make.height.equalTo(isStatus ? 30 : 24);
+        }
+      }
+    ]
+  };
+}
+
+function workerCard(top) {
+  const Runner = require("./runner");
+
+  const current = Runner.getMaxWorkers();
+
+  return {
+    type: "view",
+
+    props: {
+      bgcolor: $color(UI.CARD),
+
+      radius: 14,
+
+      borderWidth: 1,
+      borderColor: $color(UI.CARD_BORDER)
+    },
+
+    layout: make => {
+      make.top.equalTo(top);
+      make.left.right.inset(12);
+      make.height.equalTo(60);
+    },
+
+    views: [
+      {
+        type: "label",
+
+        props: {
+          text: "WORKERS",
+
+          textColor: $color(UI.MUTED),
+
+          font: $font("bold", 11)
+        },
+
+        layout: make => {
+          make.left.equalTo(14);
+          make.centerY.equalTo();
+          make.width.equalTo(75);
+          make.height.equalTo(30);
+        }
+      },
+
+      {
+        type: "button",
+
+        props: {
+          title: "−",
+
+          bgcolor: $color("#1E293B"),
+
+          titleColor: $color("#FFFFFF"),
+
+          radius: 15,
+
+          font: $font("bold", 20)
+        },
+
+        layout: make => {
+          make.left.equalTo(100);
+          make.centerY.equalTo();
+          make.size.equalTo($size(42, 34));
+        },
+
+        events: {
+          tapped() {
+            const Runner = require("./runner");
+
+            const old = Runner.getMaxWorkers();
+
+            const value = Runner.setMaxWorkers(old - 1);
+
+            const label = $("workerCount");
+
+            if (label) {
+              label.text = String(value);
+            }
+
+            Core.addLog("Workers changed: " + value, "info");
+          }
+        }
+      },
+
+      {
+        type: "label",
+
+        props: {
+          id: "workerCount",
+
+          text: String(current),
+
+          align: $align.center,
+
+          textColor: $color(UI.TEXT),
+
+          font: $font("bold", 18)
+        },
+
+        layout: make => {
+          make.left.equalTo(146);
+          make.centerY.equalTo();
+          make.width.equalTo(50);
+          make.height.equalTo(34);
+        }
+      },
+
+      {
+        type: "button",
+
+        props: {
+          title: "+",
+
+          bgcolor: $color("#1E293B"),
+
+          titleColor: $color("#FFFFFF"),
+
+          radius: 15,
+
+          font: $font("bold", 20)
+        },
+
+        layout: make => {
+          make.left.equalTo(200);
+          make.centerY.equalTo();
+          make.size.equalTo($size(42, 34));
+        },
+
+        events: {
+          tapped() {
+            const Runner = require("./runner");
+
+            const old = Runner.getMaxWorkers();
+
+            const value = Runner.setMaxWorkers(old + 1);
+
+            const label = $("workerCount");
+
+            if (label) {
+              label.text = String(value);
+            }
+
+            Core.addLog("Workers changed: " + value, "info");
+          }
+        }
+      },
+
+      {
+        type: "label",
+
+        props: {
+          text: "1 - 10",
+
+          align: $align.right,
+
+          textColor: $color(UI.MUTED),
+
+          font: $font(11)
+        },
+
+        layout: make => {
+          make.right.inset(14);
+          make.centerY.equalTo();
+          make.width.equalTo(70);
+          make.height.equalTo(30);
         }
       }
     ]
@@ -1450,161 +1353,99 @@ function runCard(top) {
     },
 
     views: [
-      actionButton(
-        "▶ RUN",
-        UI.RUN,
-        0,
-        3,
-        () => {
-          try {
-            syncFormToCore();
-        
-            const form =
-              Core.getState().form || {};
-        
-            const mailList =
-              String(
-                form.mailList || ""
-              ).trim();
-        
-            if (!mailList) {
-              $ui.alert(
-                "MAIL LIST đang trống"
-              );
-        
-              return;
-            }
-        
-            const total =
-              Core.saveQueueFromForm(
-                form,
-                Core.getState().mode
-              );
-        
-            if (!total) {
-              $ui.alert(
-                "Không tạo được task"
-              );
-        
-              return;
-            }
-        
-            queueDirty = true;
-            resultDirty = true;
-            dashboardDirty = true;
-        
-            require("./runner").run();
-          } catch (error) {
-            Core.addLog(
-              "Runner error: " +
-                String(
-                  error.message || error
-                ),
-              "error"
-            );
-        
-            $ui.alert(
-              String(
-                error.message || error
-              )
-            );
+      actionButton("▶ RUN", UI.RUN, 0, 3, () => {
+        try {
+          syncFormToCore();
+
+          const form = Core.getState().form || {};
+
+          const mailList = String(form.mailList || "").trim();
+
+          if (!mailList) {
+            $ui.alert("MAIL LIST đang trống");
+
+            return;
           }
-        }
-      ),
 
-      actionButton(
-        "■ STOP",
-        UI.STOP,
-        1,
-        3,
-        () => {
-          try {
-            require("./runner").stop();
-          } catch (error) {
-            Core.setRunning(false);
+          const total = Core.saveQueueFromForm(form, Core.getState().mode);
 
-            Core.addLog(
-              "Stop clicked",
-              "warn"
-            );
+          if (!total) {
+            $ui.alert("Không tạo được task");
+
+            return;
           }
-        }
-      ),
 
-      actionButton(
-        "RESET",
-        UI.RESET,
-        2,
-        3,
-        () => {
-          $ui.alert({
-            title: "Reset progress?",
-        
-            message:
-              "Pending, Done, Failed và Logs sẽ được xoá.\nDữ liệu trong form vẫn được giữ lại.",
-        
-            actions: [
-              {
-                title: "Cancel",
-                style: "cancel"
-              },
-        
-              {
-                title: "Reset",
-                style: "destructive",
-        
-                handler: () => {
-                  const form = Object.assign(
-                    {},
-                    Core.getState().form || {}
-                  );
-        
-                  Core.resetAll();
-        
-                  Object.keys(form).forEach(
-                    key => {
-                      Core.updateForm(
-                        key,
-                        form[key]
-                      );
-                    }
-                  );
-        
-                  queueDirty = true;
-                  resultDirty = true;
-                  dashboardDirty = true;
-        
-                  Core.addLog(
-                    "Progress reset",
-                    "warn"
-                  );
-        
-                  refresh(true);
-                }
+          queueDirty = true;
+          resultDirty = true;
+          dashboardDirty = true;
+
+          require("./runner").run();
+        } catch (error) {
+          Core.addLog(
+            "Runner error: " + String(error.message || error),
+            "error"
+          );
+
+          $ui.alert(String(error.message || error));
+        }
+      }),
+
+      actionButton("■ STOP", UI.STOP, 1, 3, () => {
+        try {
+          require("./runner").stop();
+        } catch (error) {
+          Core.setRunning(false);
+
+          Core.addLog("Stop clicked", "warn");
+        }
+      }),
+
+      actionButton("RESET", UI.RESET, 2, 3, () => {
+        $ui.alert({
+          title: "Reset progress?",
+
+          message:
+            "Pending, Done, Failed và Logs sẽ được xoá.\nDữ liệu trong form vẫn được giữ lại.",
+
+          actions: [
+            {
+              title: "Cancel",
+              style: "cancel"
+            },
+
+            {
+              title: "Reset",
+              style: "destructive",
+
+              handler: () => {
+                const form = Object.assign({}, Core.getState().form || {});
+
+                Core.resetAll();
+
+                Object.keys(form).forEach(key => {
+                  Core.updateForm(key, form[key]);
+                });
+
+                queueDirty = true;
+                resultDirty = true;
+                dashboardDirty = true;
+
+                Core.addLog("Progress reset", "warn");
+
+                refresh(true);
               }
-            ]
-          });
-        }
-      )
+            }
+          ]
+        });
+      })
     ]
   };
 }
 
-function actionButton(
-  title,
-  color,
-  index,
-  count,
-  handler
-) {
+function actionButton(title, color, index, count, handler) {
   const gap = 10;
 
-  const width =
-    (
-      sw -
-      24 -
-      gap * (count - 1)
-    ) / count;
+  const width = (sw - 24 - gap * (count - 1)) / count;
 
   return {
     type: "button",
@@ -1618,20 +1459,13 @@ function actionButton(
       radius: 17,
 
       borderWidth: 1,
-      borderColor: $rgba(
-        255,
-        255,
-        255,
-        0.14
-      ),
+      borderColor: $rgba(255, 255, 255, 0.14),
 
       font: $font("bold", 14)
     },
 
     layout: make => {
-      make.left.equalTo(
-        index * (width + gap)
-      );
+      make.left.equalTo(index * (width + gap));
 
       make.top.bottom.equalTo(0);
       make.width.equalTo(width);
@@ -1639,10 +1473,7 @@ function actionButton(
 
     events: {
       tapped(sender) {
-        pressFeedback(
-          sender,
-          handler
-        );
+        pressFeedback(sender, handler);
       }
     }
   };
@@ -1655,10 +1486,7 @@ function actionButton(
 function dataPage() {
   const sec = getModeSections(Core.getState().mode);
 
-  const views = [
-    sectionHeader("Data", 18),
-    dataActions(58)
-  ];
+  const views = [sectionHeader("Data", 18), dataActions(58)];
 
   let top = 128;
 
@@ -1669,36 +1497,17 @@ function dataPage() {
       "Account / IMAP",
       top,
       [
-        field(
-          "imapEmail",
-          "IMAP EMAIL",
-          "imap@gmail.com",
-          18,
-          false
-        ),
-    
-        field(
-          "imapPass",
-          "IMAP PASSWORD",
-          "App Password",
-          92,
-          true
-        ),
-    
-        area(
-          "mailList",
-          "MAIL LIST",
-          "mail:pass",
-          166,
-          170
-        )
+        field("imapEmail", "IMAP EMAIL", "imap@gmail.com", 18, false),
+
+        field("imapPass", "IMAP PASSWORD", "App Password", 92, true),
+
+        area("mailList", "MAIL LIST", "mail:pass", 166, 170)
       ],
       396
-      )
-    );
-    
-    top += 416;
-    
+    )
+  );
+
+  top += 416;
 
   // Product
   if (sec.product) {
@@ -1708,21 +1517,9 @@ function dataPage() {
         "Product",
         top,
         [
-          field(
-            "productIds",
-            "PRODUCT IDS",
-            "452132...,452...",
-            12,
-            false
-          ),
+          field("productIds", "PRODUCT IDS", "452132...,452...", 12, false),
 
-          field(
-            "buyQty",
-            "BUY QTY",
-            "1",
-            78,
-            false
-          )
+          field("buyQty", "BUY QTY", "1", 78, false)
         ],
         196
       )
@@ -1746,18 +1543,12 @@ function dataPage() {
           area("pref", "PREF", "東京都", 478, 88),
           area("address1", "CITY", "大田区", 594, 88),
           area("address2", "ADDRESS", "1-2-3", 710, 88),
-          area(
-            "birthdate",
-            "BIRTHDATE",
-            "1997-12-11",
-            826,
-            88
-          )
+          area("birthdate", "BIRTHDATE", "1997-12-11", 826, 88)
         ],
         974
       )
     );
-  
+
     top += 994;
   }
 
@@ -1769,21 +1560,9 @@ function dataPage() {
         "Payment",
         top,
         [
-          area(
-            "creditOwnerList",
-            "CARD OWNER",
-            "YAMADA TARO",
-            12,
-            94
-          ),
+          area("creditOwnerList", "CARD OWNER", "YAMADA TARO", 12, 94),
 
-          area(
-            "creditList",
-            "CARD LIST",
-            "number-mm/yy-cvv",
-            130,
-            108
-          )
+          area("creditList", "CARD LIST", "number-mm/yy-cvv", 130, 108)
         ],
         292
       )
@@ -1792,18 +1571,11 @@ function dataPage() {
     top += 312;
   }
 
-  return page(
-    "dataPage",
-    top + 30,
-    views
-  );
+  return page("dataPage", top + 30, views);
 }
 
 function dataPageHeight() {
-  const sec =
-    getModeSections(
-      Core.getState().mode
-    );
+  const sec = getModeSections(Core.getState().mode);
 
   let top = 128;
 
@@ -1829,16 +1601,12 @@ function dataPageHeight() {
 // ============================================================
 
 function createWebView(url) {
-  WEB_URL =
-    url || "about:blank";
+  WEB_URL = url || "about:blank";
 
   const host = $("webHost");
 
   if (!host) {
-    Core.addLog(
-      "webHost not found",
-      "error"
-    );
+    Core.addLog("webHost not found", "error");
 
     return null;
   }
@@ -1849,15 +1617,11 @@ function createWebView(url) {
 
   if (CURRENT_NATIVE_WEBVIEW) {
     try {
-      CURRENT_NATIVE_WEBVIEW.invoke(
-        "stopLoading"
-      );
+      CURRENT_NATIVE_WEBVIEW.invoke("stopLoading");
     } catch (e) {}
 
     try {
-      CURRENT_NATIVE_WEBVIEW.invoke(
-        "removeFromSuperview"
-      );
+      CURRENT_NATIVE_WEBVIEW.invoke("removeFromSuperview");
     } catch (e) {}
 
     CURRENT_NATIVE_WEBVIEW = null;
@@ -1868,35 +1632,20 @@ function createWebView(url) {
     // NATIVE CLASSES
     // ==========================================
 
-    const WKWebViewConfiguration =
-      $objc(
-        "WKWebViewConfiguration"
-      );
+    const WKWebViewConfiguration = $objc("WKWebViewConfiguration");
 
-    const WKWebsiteDataStore =
-      $objc(
-        "WKWebsiteDataStore"
-      );
+    const WKWebsiteDataStore = $objc("WKWebsiteDataStore");
 
-    const WKWebView =
-      $objc(
-        "WKWebView"
-      );
+    const WKWebView = $objc("WKWebView");
 
     // ==========================================
     // CONFIG
     // ==========================================
 
-    const config =
-      WKWebViewConfiguration
-        .invoke("alloc")
-        .invoke("init");
+    const config = WKWebViewConfiguration.invoke("alloc").invoke("init");
 
     if (!config) {
-      Core.addLog(
-        "WKWebView config failed",
-        "error"
-      );
+      Core.addLog("WKWebView config failed", "error");
 
       return null;
     }
@@ -1906,37 +1655,24 @@ function createWebView(url) {
     // giống code test
     // ==========================================
 
-    const store =
-      WKWebsiteDataStore.invoke(
-        "nonPersistentDataStore"
-      );
+    const store = WKWebsiteDataStore.invoke("nonPersistentDataStore");
 
     if (!store) {
-      Core.addLog(
-        "WKWebsiteDataStore failed",
-        "error"
-      );
+      Core.addLog("WKWebsiteDataStore failed", "error");
 
       return null;
     }
 
-    config.invoke(
-      "setWebsiteDataStore:",
-      store
-    );
+    config.invoke("setWebsiteDataStore:", store);
 
     // ==========================================
     // GET HOST NATIVE VIEW
     // ==========================================
 
-    const hostNative =
-      host.runtimeValue();
+    const hostNative = host.runtimeValue();
 
     if (!hostNative) {
-      Core.addLog(
-        "webHost runtimeValue failed",
-        "error"
-      );
+      Core.addLog("webHost runtimeValue failed", "error");
 
       return null;
     }
@@ -1948,158 +1684,98 @@ function createWebView(url) {
     const frame = {
       x: 0,
       y: 0,
-      width:
-        host.frame &&
-        host.frame.width
-          ? host.frame.width
-          : 390,
+      width: host.frame && host.frame.width ? host.frame.width : 390,
 
-      height:
-        host.frame &&
-        host.frame.height
-          ? host.frame.height
-          : 700
+      height: host.frame && host.frame.height ? host.frame.height : 700
     };
 
-    const nativeWV =
-      WKWebView
-        .invoke("alloc")
-        .invoke(
-          "initWithFrame:configuration:",
-          frame,
-          config
-        );
+    const nativeWV = WKWebView.invoke("alloc").invoke(
+      "initWithFrame:configuration:",
+      frame,
+      config
+    );
 
     if (!nativeWV) {
-      Core.addLog(
-        "WKWebView create failed",
-        "error"
-      );
+      Core.addLog("WKWebView create failed", "error");
 
       return null;
     }
 
-    CURRENT_NATIVE_WEBVIEW =
-      nativeWV;
+    CURRENT_NATIVE_WEBVIEW = nativeWV;
 
     // ==========================================
     // UA
     // ==========================================
 
     try {
-      nativeWV.invoke(
-        "setCustomUserAgent:",
-        SAFARI_UA
-      );
+      nativeWV.invoke("setCustomUserAgent:", SAFARI_UA);
 
-      Core.addLog(
-        "Native Safari UA set",
-        "info"
-      );
+      Core.addLog("Native Safari UA set", "info");
     } catch (e) {
-      Core.addLog(
-        "Native UA error: " +
-          String(e),
-        "warn"
-      );
+      Core.addLog("Native UA error: " + String(e), "warn");
     }
 
     // ==========================================
     // ADD TO HOST
     // ==========================================
 
-    hostNative.invoke(
-      "addSubview:",
-      nativeWV
-    );
+    hostNative.invoke("addSubview:", nativeWV);
 
-    Core.addLog(
-      "Native WKWebView created",
-      "info"
-    );
+    Core.addLog("Native WKWebView created", "info");
 
     // ==========================================
     // ADAPTER
     // ==========================================
 
     const adapter = {
-      _native:
-        nativeWV,
+      _native: nativeWV,
 
-      _pageReady:
-        false,
+      _pageReady: false,
 
-      _url:
-        WEB_URL,
+      _url: WEB_URL,
 
       // ------------------------------
       // JSBox-compatible-ish eval
       // ------------------------------
 
       eval(options) {
-        const script =
-          options &&
-          options.script
-            ? options.script
-            : "";
+        const script = options && options.script ? options.script : "";
 
         const handler =
-          options &&
-          typeof options.handler ===
-            "function"
+          options && typeof options.handler === "function"
             ? options.handler
-            : function() {};
+            : function () {};
 
         try {
-          const completion =
-            $block(
-              "void, id, id",
-              (
-                result,
-                error
-              ) => {
-                if (error) {
-                  handler(null);
-                  return;
-                }
+          const completion = $block("void, id, id", (result, error) => {
+            if (error) {
+              handler(null);
+              return;
+            }
 
-                if (
-                  result === null ||
-                  result === undefined
-                ) {
-                  handler(null);
-                  return;
-                }
+            if (result === null || result === undefined) {
+              handler(null);
+              return;
+            }
 
-                try {
-                  if (
-                    typeof result.rawValue ===
-                    "function"
-                  ) {
-                    handler(
-                      result.rawValue()
-                    );
+            try {
+              if (typeof result.rawValue === "function") {
+                handler(result.rawValue());
 
-                    return;
-                  }
-                } catch (e) {}
-
-                handler(result);
+                return;
               }
-            );
+            } catch (e) {}
+
+            handler(result);
+          });
 
           nativeWV.invoke(
             "evaluateJavaScript:completionHandler:",
             script,
             completion
           );
-
         } catch (e) {
-          Core.addLog(
-            "Native eval error: " +
-              String(e),
-            "error"
-          );
+          Core.addLog("Native eval error: " + String(e), "error");
 
           handler(null);
         }
@@ -2107,23 +1783,15 @@ function createWebView(url) {
 
       remove() {
         try {
-          nativeWV.invoke(
-            "stopLoading"
-          );
+          nativeWV.invoke("stopLoading");
         } catch (e) {}
 
         try {
-          nativeWV.invoke(
-            "removeFromSuperview"
-          );
+          nativeWV.invoke("removeFromSuperview");
         } catch (e) {}
 
-        if (
-          CURRENT_NATIVE_WEBVIEW ===
-          nativeWV
-        ) {
-          CURRENT_NATIVE_WEBVIEW =
-            null;
+        if (CURRENT_NATIVE_WEBVIEW === nativeWV) {
+          CURRENT_NATIVE_WEBVIEW = null;
         }
       }
     };
@@ -2135,80 +1803,47 @@ function createWebView(url) {
     // wv.url = "https://..."
     // ==========================================
 
-    Object.defineProperty(
-      adapter,
-      "url",
-      {
-        get() {
-          return adapter._url;
-        },
+    Object.defineProperty(adapter, "url", {
+      get() {
+        return adapter._url;
+      },
 
-        set(value) {
-          if (!value) {
-            return;
-          }
+      set(value) {
+        if (!value) {
+          return;
+        }
 
-          adapter._url =
-            String(value);
+        adapter._url = String(value);
 
-          WEB_URL =
-            String(value);
+        WEB_URL = String(value);
 
-          try {
-            const NSURL =
-              $objc("NSURL");
+        try {
+          const NSURL = $objc("NSURL");
 
-            const NSURLRequest =
-              $objc(
-                "NSURLRequest"
-              );
+          const NSURLRequest = $objc("NSURLRequest");
 
-            const nsurl =
-              NSURL.invoke(
-                "URLWithString:",
-                String(value)
-              );
+          const nsurl = NSURL.invoke("URLWithString:", String(value));
 
-            const request =
-              NSURLRequest.invoke(
-                "requestWithURL:",
-                nsurl
-              );
+          const request = NSURLRequest.invoke("requestWithURL:", nsurl);
 
-            adapter._pageReady =
-              false;
+          adapter._pageReady = false;
 
-            nativeWV.invoke(
-              "loadRequest:",
-              request
-            );
-
-          } catch (e) {
-            Core.addLog(
-              "Native load error: " +
-                String(e),
-              "error"
-            );
-          }
+          nativeWV.invoke("loadRequest:", request);
+        } catch (e) {
+          Core.addLog("Native load error: " + String(e), "error");
         }
       }
-    );
+    });
 
     // ==========================================
     // LOAD INITIAL URL
     // ==========================================
 
-    adapter.url =
-      WEB_URL;
+    adapter.url = WEB_URL;
 
     return adapter;
-
   } catch (e) {
-    Core.addLog(
-      "createWebView native error: " +
-        String(e),
-      "error"
-    );
+    Core.addLog("createWebView native error: " + String(e), "error");
 
     return null;
   }
@@ -2217,8 +1852,7 @@ function createWebView(url) {
 function destroyWebView() {
   WEB_URL = "about:blank";
 
-  const webView =
-    $("mainWebView");
+  const webView = $("mainWebView");
 
   if (webView) {
     try {
@@ -2228,26 +1862,17 @@ function destroyWebView() {
     }
   }
 
-  Core.addLog(
-    "WebView Closed",
-    "warn"
-  );
+  Core.addLog("WebView Closed", "warn");
 }
 
 function reloadWebView(url) {
-  let webView =
-    $("mainWebView");
+  let webView = $("mainWebView");
 
   if (!webView) {
-    return createWebView(
-      url || "about:blank"
-    );
+    return createWebView(url || "about:blank");
   }
 
-  WEB_URL =
-    url ||
-    WEB_URL ||
-    "about:blank";
+  WEB_URL = url || WEB_URL || "about:blank";
 
   webView.url = WEB_URL;
 
@@ -2273,63 +1898,35 @@ function dataActions(top) {
     },
 
     views: [
-      dataActionBtn(
-        "📥 IMPORT",
-        T.primary,
-        0,
-        importData
-      ),
+      dataActionBtn("📥 IMPORT", T.primary, 0, importData),
 
-      dataActionBtn(
-        "💾 SAVE",
-        UI.RUN,
-        1,
-        () => {
-          syncFormToCore();
+      dataActionBtn("💾 SAVE", UI.RUN, 1, () => {
+        syncFormToCore();
 
-          const total =
-            Core.saveQueueFromForm(
-              Core.getState().form,
-              Core.getState().mode
-            );
+        const total = Core.saveQueueFromForm(
+          Core.getState().form,
+          Core.getState().mode
+        );
 
-          Core.refreshStats();
-          queueDirty = true;
-          resultDirty = true;
-          dashboardDirty = true;
+        Core.refreshStats();
+        queueDirty = true;
+        resultDirty = true;
+        dashboardDirty = true;
 
-          Core.addLog(
-            "Data saved: " +
-              total +
-              " accounts",
-            "success"
-          );
+        Core.addLog("Data saved: " + total + " accounts", "success");
 
-          refresh();
+        refresh();
 
-          $ui.toast(
-            "Saved: " + total
-          );
-        }
-      )
+        $ui.toast("Saved: " + total);
+      })
     ]
   };
 }
 
-function dataActionBtn(
-  title,
-  color,
-  index,
-  handler
-) {
+function dataActionBtn(title, color, index, handler) {
   const gap = 12;
 
-  const width =
-    (
-      sw -
-      32 -
-      gap
-    ) / 2;
+  const width = (sw - 32 - gap) / 2;
 
   return {
     type: "button",
@@ -2343,20 +1940,13 @@ function dataActionBtn(
       radius: 16,
 
       borderWidth: 1,
-      borderColor: $rgba(
-        255,
-        255,
-        255,
-        0.12
-      ),
+      borderColor: $rgba(255, 255, 255, 0.12),
 
       font: $font("bold", 14)
     },
 
     layout: make => {
-      make.left.equalTo(
-        index * (width + gap)
-      );
+      make.left.equalTo(index * (width + gap));
 
       make.top.bottom.equalTo(0);
       make.width.equalTo(width);
@@ -2364,52 +1954,28 @@ function dataActionBtn(
 
     events: {
       tapped(sender) {
-        pressFeedback(
-          sender,
-          handler
-        );
+        pressFeedback(sender, handler);
       }
     }
   };
 }
 
 function syncFormToCore() {
-  const form =
-    Core.getState().form || {};
+  const form = Core.getState().form || {};
 
   Object.keys(form).forEach(key => {
     const element = $(key);
 
     if (element) {
-      Core.updateForm(
-        key,
-        element.text || ""
-      );
+      Core.updateForm(key, element.text || "");
     }
   });
 
   Core.refreshStats();
 }
 
-function dataSection(
-  id,
-  title,
-  top,
-  children,
-  height
-) {
-  return card(
-    id,
-    top,
-    height,
-    [
-      titleLabel(
-        title,
-        16,
-        12
-      )
-    ].concat(children)
-  );
+function dataSection(id, title, top, children, height) {
+  return card(id, top, height, [titleLabel(title, 16, 12)].concat(children));
 }
 
 function field(id, title, placeholder, top, secure) {
@@ -2457,12 +2023,7 @@ function field(id, title, placeholder, top, secure) {
 
           font: $font(14),
 
-          inset: $insets(
-            6,
-            12,
-            6,
-            12
-          ),
+          inset: $insets(6, 12, 6, 12),
 
           accessoryView: doneBar()
         },
@@ -2474,20 +2035,15 @@ function field(id, title, placeholder, top, secure) {
 
         events: {
           changed(sender) {
-            Core.updateForm(
-              id,
-              sender.text || ""
-            );
+            Core.updateForm(id, sender.text || "");
           },
 
           didBeginEditing(sender) {
-            sender.borderColor =
-              $color("#6366F1");
+            sender.borderColor = $color("#6366F1");
           },
 
           didEndEditing(sender) {
-            sender.borderColor =
-              $color(UI.INPUT_BORDER);
+            sender.borderColor = $color(UI.INPUT_BORDER);
           }
         }
       }
@@ -2541,12 +2097,7 @@ function area(id, title, placeholder, top, height) {
 
           font: $font("Menlo", 12),
 
-          inset: $insets(
-            9,
-            12,
-            9,
-            12
-          ),
+          inset: $insets(9, 12, 9, 12),
 
           accessoryView: doneBar()
         },
@@ -2559,20 +2110,15 @@ function area(id, title, placeholder, top, height) {
 
         events: {
           changed(sender) {
-            Core.updateForm(
-              id,
-              sender.text || ""
-            );
+            Core.updateForm(id, sender.text || "");
           },
 
           didBeginEditing(sender) {
-            sender.borderColor =
-              $color("#6366F1");
+            sender.borderColor = $color("#6366F1");
           },
 
           didEndEditing(sender) {
-            sender.borderColor =
-              $color(UI.INPUT_BORDER);
+            sender.borderColor = $color(UI.INPUT_BORDER);
           }
         }
       }
@@ -2585,57 +2131,23 @@ function area(id, title, placeholder, top, height) {
 // ============================================================
 
 function resultPage() {
-  return page(
-    "resultPage",
-    900,
-    [
-      sectionHeader(
-        "Result",
-        18
-      ),
+  return page("resultPage", 900, [
+    sectionHeader("Result", 18),
 
-      rowButtons(
-        58,
-        [
-          [
-            "Copy Done",
-            UI.RUN,
-            copyDone
-          ],
+    rowButtons(58, [
+      ["Copy Done", UI.RUN, copyDone],
 
-          [
-            "Retry Fail",
-            UI.RESET,
-            importFailToPending
-          ],
+      ["Retry Fail", UI.RESET, importFailToPending],
 
-          [
-            "Copy Fail",
-            T.primary,
-            copyFail
-          ]
-        ]
-      ),
+      ["Copy Fail", T.primary, copyFail]
+    ]),
 
-      textBox(
-        "Done Accounts",
-        "resultDone",
-        128
-      ),
+    textBox("Done Accounts", "resultDone", 128),
 
-      textBox(
-        "Failed Accounts",
-        "resultFailed",
-        378
-      ),
+    textBox("Failed Accounts", "resultFailed", 378),
 
-      textBox(
-        "Logs",
-        "resultLogs",
-        628
-      )
-    ]
-  );
+    textBox("Logs", "resultLogs", 628)
+  ]);
 }
 
 // ============================================================
@@ -2643,36 +2155,20 @@ function resultPage() {
 // ============================================================
 
 function refresh(force) {
-  const state =
-    Core.getState();
+  const state = Core.getState();
 
-  if (
-    force ||
-    tabsDirty
-  ) {
+  if (force || tabsDirty) {
     refreshTabs(state);
     tabsDirty = false;
   }
 
-  if (
-    force ||
-    dashboardDirty
-  ) {
+  if (force || dashboardDirty) {
     refreshDashboard(state);
     refreshStatus(state);
     dashboardDirty = false;
   }
 
-  if (
-    force ||
-    (
-      state.tab === "Result" &&
-      (
-        queueDirty ||
-        resultDirty
-      )
-    )
-  ) {
+  if (force || (state.tab === "Result" && (queueDirty || resultDirty))) {
     refreshQueueResult(state);
 
     queueDirty = false;
@@ -2681,183 +2177,94 @@ function refresh(force) {
 }
 
 function refreshTabs(state) {
-  const tabs = [
-    "Dashboard",
-    "Data",
-    "Browser",
-    "Result"
-  ];
+  const tabs = ["Dashboard", "Data", "Browser", "Result"];
 
   tabs.forEach(tab => {
-    const selected =
-      state.tab === tab;
+    const selected = state.tab === tab;
 
-    const container =
-      $("tabContainer_" + tab);
+    const container = $("tabContainer_" + tab);
 
-    const indicator =
-      $("tabIndicator_" + tab);
+    const indicator = $("tabIndicator_" + tab);
 
-    const icon =
-      $("tabIcon_" + tab);
+    const icon = $("tabIcon_" + tab);
 
-    const label =
-      $("tabLabel_" + tab);
+    const label = $("tabLabel_" + tab);
 
     if (container) {
-      container.bgcolor =
-        selected
-          ? $color(
-              UI.TAB_ACTIVE_BG
-            )
-          : $color("clear");
+      container.bgcolor = selected ? $color(UI.TAB_ACTIVE_BG) : $color("clear");
     }
 
     if (indicator) {
-      indicator.hidden =
-        !selected;
+      indicator.hidden = !selected;
     }
 
     if (icon) {
-      icon.tintColor =
-        $color(
-          selected
-            ? UI.TAB_ACTIVE
-            : UI.TAB_INACTIVE
-        );
+      icon.tintColor = $color(selected ? UI.TAB_ACTIVE : UI.TAB_INACTIVE);
     }
 
     if (label) {
-      label.textColor =
-        $color(
-          selected
-            ? UI.TAB_ACTIVE
-            : UI.TAB_INACTIVE
-        );
+      label.textColor = $color(selected ? UI.TAB_ACTIVE : UI.TAB_INACTIVE);
     }
   });
 }
 
 function refreshDashboard(state) {
-  setText(
-    "versionText",
-    "Version " + state.version
-  );
+  setText("versionText", "Version " + state.version);
 
-  setTitle(
-    "modeBtn",
-    modeTitle(state.mode) +
-      "  ▼"
-  );
+  setTitle("modeBtn", modeTitle(state.mode) + "  ▼");
 
-  setText(
-    "statTotal_value",
-    String(state.stats.total)
-  );
+  setText("statTotal_value", String(state.stats.total));
 
-  setText(
-    "statWaiting_value",
-    String(state.stats.waiting)
-  );
+  setText("statWaiting_value", String(state.stats.waiting));
 
-  setText(
-    "statDone_value",
-    String(state.stats.done)
-  );
+  setText("statDone_value", String(state.stats.done));
 
-  setText(
-    "statFailed_value",
-    String(state.stats.failed)
-  );
+  setText("statFailed_value", String(state.stats.failed));
 
   setText(
     "progressText",
     state.stats.percent +
       "%  •  " +
-      (
-        state.stats.done +
-        state.stats.failed
-      ) +
+      (state.stats.done + state.stats.failed) +
       "/" +
       state.stats.total
   );
 
-  animateProgress(
-    state.stats.percent,
-    false
-  );
+  animateProgress(state.stats.percent, false);
 
-  const current =
-    state.current || {};
+  const current = state.current || {};
 
-  setText(
-    "curEmail",
-    current.email || "-"
-  );
+  setText("curEmail", current.email || "-");
 
-  setText(
-    "curMode",
-    state.mode || "-"
-  );
+  setText("curMode", state.mode || "-");
 
-  setText(
-    "curStep",
-    current.step || "-"
-  );
+  setText("curStep", current.step || "-");
 
-  setText(
-    "curStatus",
-    current.status || "-"
-  );
+  setText("curStatus", current.status || "-");
 
   setText(
     "curIndex",
-    (
-      current.index || 0
-    ) +
+    (current.index || 0) +
       " / " +
-      (
-        current.total || 0
-      ) +
+      (current.total || 0) +
       "   •   " +
-      (
-        current.elapsed ||
-        "00:00"
-      )
+      (current.elapsed || "00:00")
   );
 }
 
 function refreshStatus(state) {
-  const current =
-    state.current || {};
+  const current = state.current || {};
 
-  const finished =
-    (
-      state.stats.done || 0
-    ) +
-    (
-      state.stats.failed || 0
-    );
+  const finished = (state.stats.done || 0) + (state.stats.failed || 0);
 
-  const total =
-    state.stats.total || 0;
+  const total = state.stats.total || 0;
 
-  const status =
-    current.status ||
-    (
-      state.running
-        ? "Working"
-        : "Idle"
-    );
+  const status = current.status || (state.running ? "Working" : "Idle");
 
   setText(
     "bottomStatusText",
 
-    (
-      state.running
-        ? "Running"
-        : "Ready"
-    ) +
+    (state.running ? "Running" : "Ready") +
       "  •  " +
       state.mode +
       "  •  " +
@@ -2868,139 +2275,67 @@ function refreshStatus(state) {
       status
   );
 
-  const dot =
-    $("bottomStatusDot");
+  const dot = $("bottomStatusDot");
 
   if (dot) {
-    dot.bgcolor =
-      $color(
-        state.running
-          ? UI.RUN
-          : "#64748B"
-      );
+    dot.bgcolor = $color(state.running ? UI.RUN : "#64748B");
   }
 }
 
 function refreshQueueResult(state) {
-  const pending =
-    Core.loadJSON(
-      Core.FILE_PENDING,
-      []
-    );
+  const pending = Core.loadJSON(Core.FILE_PENDING, []);
 
-  const done =
-    Core.loadJSON(
-      Core.FILE_DONE,
-      []
-    );
+  const done = Core.loadJSON(Core.FILE_DONE, []);
 
-  const failed =
-    Core.loadJSON(
-      Core.FILE_FAILED,
-      []
-    );
+  const failed = Core.loadJSON(Core.FILE_FAILED, []);
 
   cachedQueueResult.pendingText =
-    Core.listToAccountText(
-      pending,
-      state.mode
-    ) || "No pending";
+    Core.listToAccountText(pending, state.mode) || "No pending";
 
-  cachedQueueResult.doneText =
-    Array.isArray(done)
-      ? done
-          .map(item => {
-            return (
-              item.text ||
-              [
-                item.email || "",
-                item.pass || ""
-              ]
-                .filter(Boolean)
-                .join(":")
-            );
-          })
-          .filter(Boolean)
-          .join("\n") ||
-        "No done"
-      : "No done";
+  cachedQueueResult.doneText = Array.isArray(done)
+    ? done
+        .map(item => {
+          return (
+            item.text ||
+            [item.email || "", item.pass || ""].filter(Boolean).join(":")
+          );
+        })
+        .filter(Boolean)
+        .join("\n") || "No done"
+    : "No done";
 
-  cachedQueueResult.failedText =
-    Array.isArray(failed)
-      ? failed
-          .map(item => {
-            const account =
-              [
-                item.email || "",
-                item.pass || ""
-              ]
-                .filter(Boolean)
-                .join(":");
+  cachedQueueResult.failedText = Array.isArray(failed)
+    ? failed
+        .map(item => {
+          const account = [item.email || "", item.pass || ""]
+            .filter(Boolean)
+            .join(":");
 
-            const reason =
-              item.reason || "";
+          const reason = item.reason || "";
 
-            return (
-              item.text ||
-              (
-                account +
-                (
-                  reason
-                    ? "\t" + reason
-                    : ""
-                )
-              )
-            );
-          })
-          .filter(Boolean)
-          .join("\n") ||
-        "No failed"
-      : "No failed";
+          return item.text || account + (reason ? "\t" + reason : "");
+        })
+        .filter(Boolean)
+        .join("\n") || "No failed"
+    : "No failed";
 
-  setText(
-    "queuePending",
-    cachedQueueResult.pendingText
-  );
+  setText("queuePending", cachedQueueResult.pendingText);
 
-  setText(
-    "queueDone",
-    cachedQueueResult.doneText
-  );
+  setText("queueDone", cachedQueueResult.doneText);
 
-  setText(
-    "queueFailed",
-    cachedQueueResult.failedText
-  );
+  setText("queueFailed", cachedQueueResult.failedText);
 
-  setText(
-    "resultDone",
-    cachedQueueResult.doneText
-  );
+  setText("resultDone", cachedQueueResult.doneText);
 
-  setText(
-    "resultFailed",
-    cachedQueueResult.failedText
-  );
+  setText("resultFailed", cachedQueueResult.failedText);
 
-  const logs =
-    (
-      state.logs || []
-    )
-      .map(log => {
-        return (
-          logIcon(log.type) +
-          " " +
-          log.time +
-          "  " +
-          log.text
-        );
-      })
-      .join("\n");
+  const logs = (state.logs || [])
+    .map(log => {
+      return logIcon(log.type) + " " + log.time + "  " + log.text;
+    })
+    .join("\n");
 
-  setText(
-    "resultLogs",
-    logs || "No logs"
-  );
+  setText("resultLogs", logs || "No logs");
 }
 
 // ============================================================
@@ -3008,8 +2343,7 @@ function refreshQueueResult(state) {
 // ============================================================
 
 function showModeMenu() {
-  const modes =
-    Core.MODES || [];
+  const modes = Core.MODES || [];
 
   const rowHeight = 66;
 
@@ -3026,14 +2360,9 @@ function showModeMenu() {
         props: {
           text: "Choose Mode",
 
-          textColor: $color(
-            T.text
-          ),
+          textColor: $color(T.text),
 
-          font: $font(
-            "bold",
-            24
-          )
+          font: $font("bold", 24)
         },
 
         layout: make => {
@@ -3047,143 +2376,85 @@ function showModeMenu() {
         type: "view",
 
         props: {
-          bgcolor: $color(
-            UI.CARD_BG
-          ),
+          bgcolor: $color(UI.CARD_BG),
 
           radius: 22,
 
           borderWidth: 1,
-          borderColor: $color(
-            UI.CARD_BORDER
-          )
+          borderColor: $color(UI.CARD_BORDER)
         },
 
         layout: make => {
           make.top.equalTo(64);
           make.left.right.inset(14);
 
-          make.height.equalTo(
-            modes.length *
-              rowHeight +
-              12
-          );
+          make.height.equalTo(modes.length * rowHeight + 12);
         },
 
-        views: modes.map(
-          (mode, index) => {
-            const metadata =
-              modeMeta(mode);
+        views: modes.map((mode, index) => {
+          const metadata = modeMeta(mode);
 
-            const selected =
-              Core.getState().mode ===
-              mode;
+          const selected = Core.getState().mode === mode;
 
-            return {
-              type: "button",
+          return {
+            type: "button",
 
-              props: {
-                title:
-                  metadata[0] +
-                  "  " +
-                  metadata[1] +
-                  (
-                    selected
-                      ? "   ✓"
-                      : ""
-                  ) +
-                  "\n" +
-                  metadata[2],
+            props: {
+              title:
+                metadata[0] +
+                "  " +
+                metadata[1] +
+                (selected ? "   ✓" : "") +
+                "\n" +
+                metadata[2],
 
-                bgcolor: $color(
-                  selected
-                    ? UI.TAB_ACTIVE_BG
-                    : "clear"
-                ),
+              bgcolor: $color(selected ? UI.TAB_ACTIVE_BG : "clear"),
 
-                titleColor: $color(
-                  selected
-                    ? UI.TAB_ACTIVE
-                    : "#E5E7EB"
-                ),
+              titleColor: $color(selected ? UI.TAB_ACTIVE : "#E5E7EB"),
 
-                font: $font(
-                  "bold",
-                  14
-                ),
+              font: $font("bold", 14),
 
-                align: $align.left,
-                radius: 14,
+              align: $align.left,
+              radius: 14,
 
-                borderWidth:
-                  selected ? 1 : 0,
+              borderWidth: selected ? 1 : 0,
 
-                borderColor:
-                  selected
-                    ? $rgba(
-                        253,
-                        224,
-                        71,
-                        0.16
-                      )
-                    : $color(
-                        "clear"
-                      ),
+              borderColor: selected
+                ? $rgba(253, 224, 71, 0.16)
+                : $color("clear"),
 
-                contentEdgeInsets:
-                  $insets(
-                    8,
-                    14,
-                    8,
-                    14
-                  )
-              },
+              contentEdgeInsets: $insets(8, 14, 8, 14)
+            },
 
-              layout: make => {
-                make.left.right.inset(
-                  10
-                );
+            layout: make => {
+              make.left.right.inset(10);
 
-                make.top.equalTo(
-                  8 +
-                    index *
-                      rowHeight
-                );
+              make.top.equalTo(8 + index * rowHeight);
 
-                make.height.equalTo(
-                  rowHeight - 8
-                );
-              },
+              make.height.equalTo(rowHeight - 8);
+            },
 
-              events: {
-                tapped(sender) {
-                  pressFeedback(
-                    sender,
-                    () => {
-                      Core.setMode(mode);
-                      
-                      queueDirty = true;
-                      resultDirty = true;
-                      dashboardDirty = true;
-                      tabsDirty = true;
-                      
-                      Core.addLog(
-                        "Mode changed: " +
-                          mode,
-                        "info"
-                      );
+            events: {
+              tapped(sender) {
+                pressFeedback(sender, () => {
+                  Core.setMode(mode);
 
-                      $ui.pop();
+                  queueDirty = true;
+                  resultDirty = true;
+                  dashboardDirty = true;
+                  tabsDirty = true;
 
-                      lastTab = null;
-                      renderCurrentTab();
-                    }
-                  );
-                }
+                  Core.addLog("Mode changed: " + mode, "info");
+
+                  $ui.pop();
+
+                  lastTab = null;
+                  renderCurrentTab();
+                });
               }
-            };
-          }
-        )
+            }
+          };
+        })
       }
     ]
   });
@@ -3194,23 +2465,16 @@ function showModeMenu() {
 // ============================================================
 
 function copyDone() {
-  const done =
-    Core.loadJSON(
-      Core.FILE_DONE,
-      []
-    );
+  const done = Core.loadJSON(Core.FILE_DONE, []);
 
-  const text =
-    Array.isArray(done)
-      ? done
-          .map(item => {
-            return (
-              item.email || ""
-            );
-          })
-          .filter(Boolean)
-          .join("\n")
-      : "";
+  const text = Array.isArray(done)
+    ? done
+        .map(item => {
+          return item.email || "";
+        })
+        .filter(Boolean)
+        .join("\n")
+    : "";
 
   if (!text) {
     $ui.toast("No done");
@@ -3222,38 +2486,24 @@ function copyDone() {
 }
 
 function copyFail() {
-  const failed =
-    Core.loadJSON(
-      Core.FILE_FAILED,
-      []
-    );
+  const failed = Core.loadJSON(Core.FILE_FAILED, []);
 
-  const text =
-    Array.isArray(failed)
-      ? failed
-          .map(item => {
-            return (
-              (
-                item.email ||
-                ""
-              ) +
-              ":" +
-              (
-                item.pass ||
-                ""
-              ) +
-              "\t" +
-              (
-                item.reason ||
-                ""
-              )
-            );
-          })
-          .filter(item => {
-            return item.trim();
-          })
-          .join("\n")
-      : "";
+  const text = Array.isArray(failed)
+    ? failed
+        .map(item => {
+          return (
+            (item.email || "") +
+            ":" +
+            (item.pass || "") +
+            "\t" +
+            (item.reason || "")
+          );
+        })
+        .filter(item => {
+          return item.trim();
+        })
+        .join("\n")
+    : "";
 
   if (!text) {
     $ui.toast("No failed");
@@ -3275,27 +2525,12 @@ function normalizeHeader(value) {
     .replace(/\s+/g, "_");
 }
 
-function findColumn(
-  headers,
-  keywords
-) {
-  for (
-    let index = 0;
-    index < headers.length;
-    index++
-  ) {
-    const header =
-      String(
-        headers[index] ||
-        ""
-      ).toLowerCase();
+function findColumn(headers, keywords) {
+  for (let index = 0; index < headers.length; index++) {
+    const header = String(headers[index] || "").toLowerCase();
 
-    for (
-      const keyword of keywords
-    ) {
-      if (
-        header.includes(keyword)
-      ) {
+    for (const keyword of keywords) {
+      if (header.includes(keyword)) {
         return index;
       }
     }
@@ -3306,139 +2541,44 @@ function findColumn(
 
 function getImportColumnMap(headers) {
   return {
-    productIds: findColumn(
-      headers,
-      [
-        "product_ids",
-        "productids",
-        "product",
-        "sku"
-      ]
-    ),
+    productIds: findColumn(headers, [
+      "product_ids",
+      "productids",
+      "product",
+      "sku"
+    ]),
 
-    buyQty: findColumn(
-      headers,
-      [
-        "buy_qty",
-        "buyqty",
-        "qty",
-        "quantity"
-      ]
-    ),
+    buyQty: findColumn(headers, ["buy_qty", "buyqty", "qty", "quantity"]),
 
-    imapEmail: findColumn(
-      headers,
-      [
-        "imap_email",
-        "imapemail"
-      ]
-    ),
+    imapEmail: findColumn(headers, ["imap_email", "imapemail"]),
 
-    imapPass: findColumn(
-      headers,
-      [
-        "imap_pass",
-        "imappass"
-      ]
-    ),
+    imapPass: findColumn(headers, ["imap_pass", "imappass"]),
 
-    mailList: findColumn(
-      headers,
-      [
-        "mail_list",
-        "maillist"
-      ]
-    ),
+    mailList: findColumn(headers, ["mail_list", "maillist"]),
 
-    name: findColumn(
-      headers,
-      [
-        "full_name",
-        "fullname",
-        "name"
-      ]
-    ),
+    name: findColumn(headers, ["full_name", "fullname", "name"]),
 
-    kana: findColumn(
-      headers,
-      ["kana"]
-    ),
+    kana: findColumn(headers, ["kana"]),
 
-    postcode: findColumn(
-      headers,
-      [
-        "postcode",
-        "zip"
-      ]
-    ),
+    postcode: findColumn(headers, ["postcode", "zip"]),
 
-    pref: findColumn(
-      headers,
-      ["pref"]
-    ),
+    pref: findColumn(headers, ["pref"]),
 
-    city: findColumn(
-      headers,
-      ["city"]
-    ),
+    city: findColumn(headers, ["city"]),
 
-    banchi: findColumn(
-      headers,
-      [
-        "banchi",
-        "address"
-      ]
-    ),
+    banchi: findColumn(headers, ["banchi", "address"]),
 
-    phone: findColumn(
-      headers,
-      [
-        "phone",
-        "tel"
-      ]
-    ),
+    phone: findColumn(headers, ["phone", "tel"]),
 
-    birthdate: findColumn(
-      headers,
-      [
-        "birthdate",
-        "dob"
-      ]
-    ),
+    birthdate: findColumn(headers, ["birthdate", "dob"]),
 
-    creditOwner: findColumn(
-      headers,
-      [
-        "card_owner",
-        "cardowner"
-      ]
-    ),
+    creditOwner: findColumn(headers, ["card_owner", "cardowner"]),
 
-    creditNumber: findColumn(
-      headers,
-      [
-        "card_number",
-        "cardnumber"
-      ]
-    ),
+    creditNumber: findColumn(headers, ["card_number", "cardnumber"]),
 
-    creditExpire: findColumn(
-      headers,
-      [
-        "card_expire",
-        "cardexpire"
-      ]
-    ),
+    creditExpire: findColumn(headers, ["card_expire", "cardexpire"]),
 
-    creditCsv: findColumn(
-      headers,
-      [
-        "card_csv",
-        "cardcsv",
-        "cvv",
-        "cvc"
-      ]
-    )
+    creditCsv: findColumn(headers, ["card_csv", "cardcsv", "cvv", "cvc"])
   };
 }
 
@@ -3449,22 +2589,12 @@ function parseSheetText(text) {
   let cell = "";
   let quote = false;
 
-  for (
-    let index = 0;
-    index < text.length;
-    index++
-  ) {
-    const character =
-      text[index];
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
 
-    const next =
-      text[index + 1];
+    const next = text[index + 1];
 
-    if (
-      character === '"' &&
-      quote &&
-      next === '"'
-    ) {
+    if (character === '"' && quote && next === '"') {
       cell += '"';
       index++;
       continue;
@@ -3476,11 +2606,7 @@ function parseSheetText(text) {
     }
 
     if (
-      (
-        character === "\t" ||
-        character === "," ||
-        character === ";"
-      ) &&
+      (character === "\t" || character === "," || character === ";") &&
       !quote
     ) {
       row.push(cell.trim());
@@ -3488,17 +2614,8 @@ function parseSheetText(text) {
       continue;
     }
 
-    if (
-      (
-        character === "\n" ||
-        character === "\r"
-      ) &&
-      !quote
-    ) {
-      if (
-        character === "\r" &&
-        next === "\n"
-      ) {
+    if ((character === "\n" || character === "\r") && !quote) {
+      if (character === "\r" && next === "\n") {
         index++;
       }
 
@@ -3535,57 +2652,35 @@ function parseSheetText(text) {
 }
 
 function parseImportData(text) {
-  const rows =
-    parseSheetText(text);
+  const rows = parseSheetText(text);
 
   if (rows.length < 2) {
     return [];
   }
 
-  const headers =
-    rows[0].map(value => {
-      return normalizeHeader(value);
-    });
+  const headers = rows[0].map(value => {
+    return normalizeHeader(value);
+  });
 
-  const map =
-    getImportColumnMap(
-      headers
-    );
+  const map = getImportColumnMap(headers);
 
   const data = [];
 
-  for (
-    let rowIndex = 1;
-    rowIndex < rows.length;
-    rowIndex++
-  ) {
-    const cells =
-      rows[rowIndex];
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex++) {
+    const cells = rows[rowIndex];
 
     const row = {};
 
-    Object.keys(map).forEach(
-      key => {
-        const columnIndex =
-          map[key];
+    Object.keys(map).forEach(key => {
+      const columnIndex = map[key];
 
-        row[key] =
-          columnIndex >= 0 &&
-          cells[columnIndex]
-            ? String(
-                cells[
-                  columnIndex
-                ]
-              ).trim()
-            : "";
-      }
-    );
+      row[key] =
+        columnIndex >= 0 && cells[columnIndex]
+          ? String(cells[columnIndex]).trim()
+          : "";
+    });
 
-    if (
-      Object.values(row).some(
-        value => value
-      )
-    ) {
+    if (Object.values(row).some(value => value)) {
       data.push(row);
     }
   }
@@ -3594,10 +2689,7 @@ function parseImportData(text) {
 }
 
 function googleSheetCsvUrl(url) {
-  const match =
-    String(url || "").match(
-      /\/spreadsheets\/d\/([^/]+)/
-    );
+  const match = String(url || "").match(/\/spreadsheets\/d\/([^/]+)/);
 
   if (!match) {
     return "";
@@ -3625,10 +2717,7 @@ function httpGetText(url) {
 
         try {
           text =
-            response.data &&
-            response.data.string
-              ? response.data.string
-              : "";
+            response.data && response.data.string ? response.data.string : "";
         } catch (error) {
           //
         }
@@ -3636,8 +2725,7 @@ function httpGetText(url) {
         if (!text) {
           try {
             text =
-              response.rawData &&
-              response.rawData.string
+              response.rawData && response.rawData.string
                 ? response.rawData.string
                 : "";
           } catch (error) {
@@ -3645,31 +2733,18 @@ function httpGetText(url) {
           }
         }
 
-        if (
-          !text &&
-          typeof response.data ===
-            "string"
-        ) {
+        if (!text && typeof response.data === "string") {
           text = response.data;
         }
 
-        resolve(
-          String(text || "")
-            .replace(
-              /^\uFEFF/,
-              ""
-            )
-        );
+        resolve(String(text || "").replace(/^\uFEFF/, ""));
       }
     });
   });
 }
 
 function setValue(id, text) {
-  const value =
-    text == null
-      ? ""
-      : String(text);
+  const value = text == null ? "" : String(text);
 
   Core.updateForm(id, value);
 
@@ -3681,32 +2756,22 @@ function setValue(id, text) {
 }
 
 function unique(list) {
-  return [
-    ...new Set(
-      (list || []).filter(Boolean)
-    )
-  ];
+  return [...new Set((list || []).filter(Boolean))];
 }
 
 function importData() {
   $input.text({
     type: $kbType.url,
 
-    placeholder:
-      "Dán link Google Sheet",
+    placeholder: "Dán link Google Sheet",
 
     handler: async url => {
       if (!url) return;
 
-      const csvUrl =
-        googleSheetCsvUrl(
-          url.trim()
-        );
+      const csvUrl = googleSheetCsvUrl(url.trim());
 
       if (!csvUrl) {
-        $ui.alert(
-          "Link Google Sheet không hợp lệ"
-        );
+        $ui.alert("Link Google Sheet không hợp lệ");
 
         return;
       }
@@ -3714,24 +2779,18 @@ function importData() {
       $ui.loading(true);
 
       try {
-        const text =
-          await httpGetText(csvUrl);
+        const text = await httpGetText(csvUrl);
 
         if (!text.trim()) {
-          $ui.alert(
-            "Không đọc được dữ liệu từ sheet import"
-          );
+          $ui.alert("Không đọc được dữ liệu từ sheet import");
 
           return;
         }
 
-        const data =
-          parseImportData(text);
+        const data = parseImportData(text);
 
         if (!data.length) {
-          $ui.alert(
-            "Sheet không có dữ liệu hợp lệ"
-          );
+          $ui.alert("Sheet không có dữ liệu hợp lệ");
 
           return;
         }
@@ -3739,8 +2798,7 @@ function importData() {
         g_importData = data;
 
         $ui.alert({
-          title:
-            "📥 Import dữ liệu",
+          title: "📥 Import dữ liệu",
 
           message:
             "Import " +
@@ -3758,9 +2816,7 @@ function importData() {
               title: "Import",
 
               handler: () => {
-                importAllColumns(
-                  true
-                );
+                importAllColumns(true);
               }
             }
           ]
@@ -3772,18 +2828,9 @@ function importData() {
   });
 }
 
-function importAllColumns(
-  clearProgress
-) {
-  if (
-    !Array.isArray(
-      g_importData
-    ) ||
-    !g_importData.length
-  ) {
-    $ui.toast(
-      "No import data"
-    );
+function importAllColumns(clearProgress) {
+  if (!Array.isArray(g_importData) || !g_importData.length) {
+    $ui.toast("No import data");
 
     return;
   }
@@ -3813,326 +2860,181 @@ function importAllColumns(
 
   g_importData.forEach(row => {
     if (row.productIds) {
-      lists.productIds.push(
-        row.productIds
-      );
+      lists.productIds.push(row.productIds);
     }
 
     if (row.mailList) {
-      lists.mailList.push(
-        row.mailList
-      );
+      lists.mailList.push(row.mailList);
     }
 
     if (row.name) {
-      lists.names.push(
-        row.name
-      );
+      lists.names.push(row.name);
     }
 
     if (row.kana) {
-      lists.kanas.push(
-        row.kana
-      );
+      lists.kanas.push(row.kana);
     }
 
     if (row.postcode) {
-      lists.postcode.push(
-        row.postcode
-      );
+      lists.postcode.push(row.postcode);
     }
 
     if (row.pref) {
-      lists.pref.push(
-        row.pref
-      );
+      lists.pref.push(row.pref);
     }
 
     if (row.city) {
-      lists.address1.push(
-        row.city
-      );
+      lists.address1.push(row.city);
     }
 
     if (row.banchi) {
-      lists.address2.push(
-        row.banchi
-      );
+      lists.address2.push(row.banchi);
     }
 
     if (row.phone) {
-      lists.phones.push(
-        row.phone
-      );
+      lists.phones.push(row.phone);
     }
 
     if (row.birthdate) {
-      lists.birthdate.push(
-        row.birthdate
-      );
+      lists.birthdate.push(row.birthdate);
     }
 
     if (row.creditOwner) {
-      lists.creditOwnerList.push(
-        row.creditOwner
-      );
+      lists.creditOwnerList.push(row.creditOwner);
     }
 
     if (row.creditNumber) {
       lists.creditList.push(
         row.creditNumber +
           "-" +
-          (
-            row.creditExpire ||
-            ""
-          ) +
+          (row.creditExpire || "") +
           "-" +
-          (
-            row.creditCsv ||
-            ""
-          )
+          (row.creditCsv || "")
       );
     }
 
-    if (
-      !buyQty &&
-      row.buyQty
-    ) {
+    if (!buyQty && row.buyQty) {
       buyQty = row.buyQty;
     }
 
-    if (
-      !imapEmail &&
-      row.imapEmail
-    ) {
-      imapEmail =
-        row.imapEmail;
+    if (!imapEmail && row.imapEmail) {
+      imapEmail = row.imapEmail;
     }
 
-    if (
-      !imapPass &&
-      row.imapPass
-    ) {
-      imapPass =
-        row.imapPass;
+    if (!imapPass && row.imapPass) {
+      imapPass = row.imapPass;
     }
   });
 
-  setValue(
-    "buyQty",
-    buyQty
-  );
+  setValue("buyQty", buyQty);
 
-  setValue(
-    "imapEmail",
-    imapEmail
-  );
+  setValue("imapEmail", imapEmail);
 
-  setValue(
-    "imapPass",
-    imapPass
-  );
+  setValue("imapPass", imapPass);
 
-  setValue(
-    "productIds",
-    unique(
-      lists.productIds
-    ).join(", ")
-  );
+  setValue("productIds", unique(lists.productIds).join(", "));
 
-  setValue(
-    "mailList",
-    lists.mailList.join("\n")
-  );
+  setValue("mailList", lists.mailList.join("\n"));
 
-  setValue(
-    "names",
-    lists.names.join("\n")
-  );
+  setValue("names", lists.names.join("\n"));
 
-  setValue(
-    "kanas",
-    lists.kanas.join("\n")
-  );
+  setValue("kanas", lists.kanas.join("\n"));
 
-  setValue(
-    "postcode",
-    lists.postcode.join("\n")
-  );
+  setValue("postcode", lists.postcode.join("\n"));
 
-  setValue(
-    "pref",
-    lists.pref.join("\n")
-  );
+  setValue("pref", lists.pref.join("\n"));
 
-  setValue(
-    "address1",
-    lists.address1.join("\n")
-  );
+  setValue("address1", lists.address1.join("\n"));
 
-  setValue(
-    "address2",
-    lists.address2.join("\n")
-  );
+  setValue("address2", lists.address2.join("\n"));
 
-  setValue(
-    "phones",
-    lists.phones.join("\n")
-  );
+  setValue("phones", lists.phones.join("\n"));
 
-  setValue(
-    "birthdate",
-    lists.birthdate.join("\n")
-  );
+  setValue("birthdate", lists.birthdate.join("\n"));
 
-  setValue(
-    "creditOwnerList",
-    lists.creditOwnerList.join(
-      "\n"
-    )
-  );
+  setValue("creditOwnerList", lists.creditOwnerList.join("\n"));
 
-  setValue(
-    "creditList",
-    lists.creditList.join("\n")
-  );
+  setValue("creditList", lists.creditList.join("\n"));
 
   if (clearProgress) {
-    Core.saveJSON(
-      Core.FILE_DONE,
-      []
-    );
+    Core.saveJSON(Core.FILE_DONE, []);
 
-    Core.saveJSON(
-      Core.FILE_FAILED,
-      []
-    );
+    Core.saveJSON(Core.FILE_FAILED, []);
   }
 
-  const total =
-    Core.saveQueueFromForm(
-      Core.getState().form,
-      Core.getState().mode
-    );
+  const total = Core.saveQueueFromForm(
+    Core.getState().form,
+    Core.getState().mode
+  );
 
   Core.refreshStats();
-  
+
   queueDirty = true;
   resultDirty = true;
   dashboardDirty = true;
-  
-  Core.addLog(
-    "Imported: " +
-      total +
-      " accounts",
-    "success"
-  );
-  
+
+  Core.addLog("Imported: " + total + " accounts", "success");
+
   refresh();
-  
-  $ui.toast(
-    "Import OK: " + total
-  );
+
+  $ui.toast("Import OK: " + total);
 }
 
 function importFailToPending() {
-  const failed =
-    Core.loadJSON(
-      Core.FILE_FAILED,
-      []
-    );
+  const failed = Core.loadJSON(Core.FILE_FAILED, []);
 
-  if (
-    !Array.isArray(failed) ||
-    !failed.length
-  ) {
+  if (!Array.isArray(failed) || !failed.length) {
     $ui.toast("No failed");
     return;
   }
 
   let retryAccounts = failed;
 
-  if (
-    Core.getState().mode ===
-    "CheckResult"
-  ) {
-    retryAccounts =
-      failed.filter(item => {
-        return (
-          String(
-            item.reason || ""
-          ).toUpperCase() ===
-          "NOTMAIL"
-        );
-      });
+  if (Core.getState().mode === "CheckResult") {
+    retryAccounts = failed.filter(item => {
+      return String(item.reason || "").toUpperCase() === "NOTMAIL";
+    });
   }
 
   if (!retryAccounts.length) {
-    $ui.toast(
-      "No retry target"
-    );
+    $ui.toast("No retry target");
 
     return;
   }
 
-  const retryTasks =
-    Core.buildTasksFromForm(
-      Core.getState().form,
-      Core.getState().mode,
-      retryAccounts
-    );
-
-  const mailText =
-    Core.listToAccountText(
-      retryTasks,
-      Core.getState().mode
-    );
-
-  Core.saveJSON(
-    Core.FILE_PENDING,
-    retryTasks
+  const retryTasks = Core.buildTasksFromForm(
+    Core.getState().form,
+    Core.getState().mode,
+    retryAccounts
   );
 
-  Core.saveJSON(
-    Core.FILE_DONE,
-    []
-  );
+  const mailText = Core.listToAccountText(retryTasks, Core.getState().mode);
 
-  Core.saveJSON(
-    Core.FILE_FAILED,
-    []
-  );
+  Core.saveJSON(Core.FILE_PENDING, retryTasks);
 
-  Core.updateForm(
-    "mailList",
-    mailText
-  );
+  Core.saveJSON(Core.FILE_DONE, []);
 
-  const mailList =
-    $("mailList");
+  Core.saveJSON(Core.FILE_FAILED, []);
+
+  Core.updateForm("mailList", mailText);
+
+  const mailList = $("mailList");
 
   if (mailList) {
     mailList.text = mailText;
   }
 
   Core.refreshStats();
-  
+
   queueDirty = true;
   resultDirty = true;
   dashboardDirty = true;
-  
-  refresh();
-  
-  Core.addLog(
-    "Failed imported to pending: " +
-      retryTasks.length,
-    "warn"
-  );
 
-  $ui.toast(
-    "Imported: " +
-      retryTasks.length
-  );
+  refresh();
+
+  Core.addLog("Failed imported to pending: " + retryTasks.length, "warn");
+
+  $ui.toast("Imported: " + retryTasks.length);
 }
 
 function getModeSections(mode) {
@@ -4152,9 +3054,7 @@ function getModeSections(mode) {
       mode === "BuyJumpPlus" ||
       mode === "ChangeProfileOrder",
 
-    payment:
-      mode === "Buy" ||
-      mode === "BuyJumpPlus",
+    payment: mode === "Buy" || mode === "BuyJumpPlus"
   };
 }
 
@@ -4162,11 +3062,7 @@ function getModeSections(mode) {
 // GENERIC UI HELPERS
 // ============================================================
 
-function page(
-  id,
-  height,
-  views
-) {
+function page(id, height, views) {
   return {
     type: "view",
 
@@ -4185,35 +3081,24 @@ function page(
   };
 }
 
-function card(
-  id,
-  top,
-  height,
-  views
-) {
+function card(id, top, height, views) {
   return {
     type: "view",
 
     props: {
       id: id,
 
-      bgcolor: $color(
-        UI.CARD_BG
-      ),
+      bgcolor: $color(UI.CARD_BG),
 
       radius: 20,
 
       borderWidth: 1,
-      borderColor: $color(
-        UI.CARD_BORDER
-      )
+      borderColor: $color(UI.CARD_BORDER)
     },
 
     layout: make => {
       make.top.equalTo(top);
-      make.left.right.inset(
-        CARD_X
-      );
+      make.left.right.inset(CARD_X);
 
       make.height.equalTo(height);
     },
@@ -4222,11 +3107,7 @@ function card(
   };
 }
 
-function titleLabel(
-  text,
-  left,
-  top
-) {
+function titleLabel(text, left, top) {
   return {
     type: "label",
 
@@ -4245,10 +3126,7 @@ function titleLabel(
   };
 }
 
-function sectionHeader(
-  text,
-  top
-) {
+function sectionHeader(text, top) {
   return {
     type: "label",
 
@@ -4267,10 +3145,7 @@ function sectionHeader(
   };
 }
 
-function rowButtons(
-  top,
-  buttons
-) {
+function rowButtons(top, buttons) {
   return {
     type: "view",
 
@@ -4280,33 +3155,16 @@ function rowButtons(
       make.height.equalTo(52);
     },
 
-    views: buttons.map(
-      (button, index) => {
-        return smallBtn(
-          button[0],
-          button[1],
-          index,
-          button[2]
-        );
-      }
-    )
+    views: buttons.map((button, index) => {
+      return smallBtn(button[0], button[1], index, button[2]);
+    })
   };
 }
 
-function smallBtn(
-  title,
-  color,
-  index,
-  handler
-) {
+function smallBtn(title, color, index, handler) {
   const gap = 10;
 
-  const width =
-    (
-      sw -
-      32 -
-      gap * 2
-    ) / 3;
+  const width = (sw - 32 - gap * 2) / 3;
 
   return {
     type: "button",
@@ -4320,20 +3178,13 @@ function smallBtn(
       radius: 14,
 
       borderWidth: 1,
-      borderColor: $rgba(
-        255,
-        255,
-        255,
-        0.12
-      ),
+      borderColor: $rgba(255, 255, 255, 0.12),
 
       font: $font("bold", 12)
     },
 
     layout: make => {
-      make.left.equalTo(
-        index * (width + gap)
-      );
+      make.left.equalTo(index * (width + gap));
 
       make.top.bottom.equalTo(0);
       make.width.equalTo(width);
@@ -4341,78 +3192,48 @@ function smallBtn(
 
     events: {
       tapped(sender) {
-        pressFeedback(
-          sender,
-          handler
-        );
+        pressFeedback(sender, handler);
       }
     }
   };
 }
 
-function textBox(
-  title,
-  id,
-  top
-) {
-  return card(
-    id + "Card",
-    top,
-    220,
-    [
-      titleLabel(
-        title,
-        16,
-        14
-      ),
+function textBox(title, id, top) {
+  return card(id + "Card", top, 220, [
+    titleLabel(title, 16, 14),
 
-      {
-        type: "text",
+    {
+      type: "text",
 
-        props: {
-          id: id,
+      props: {
+        id: id,
 
-          text: "",
+        text: "",
 
-          editable: false,
-          selectable: true,
+        editable: false,
+        selectable: true,
 
-          bgcolor: $color(
-            UI.INPUT_BG
-          ),
+        bgcolor: $color(UI.INPUT_BG),
 
-          textColor: $color(
-            UI.TEXT_SOFT
-          ),
+        textColor: $color(UI.TEXT_SOFT),
 
-          font: $font(
-            "Menlo",
-            11
-          ),
+        font: $font("Menlo", 11),
 
-          radius: 13,
+        radius: 13,
 
-          borderWidth: 1,
-          borderColor: $color(
-            UI.INPUT_BORDER
-          ),
+        borderWidth: 1,
+        borderColor: $color(UI.INPUT_BORDER),
 
-          inset: $insets(
-            9,
-            10,
-            9,
-            10
-          )
-        },
+        inset: $insets(9, 10, 9, 10)
+      },
 
-        layout: make => {
-          make.top.equalTo(46);
-          make.left.right.inset(16);
-          make.bottom.inset(14);
-        }
+      layout: make => {
+        make.top.equalTo(46);
+        make.left.right.inset(16);
+        make.bottom.inset(14);
       }
-    ]
-  );
+    }
+  ]);
 }
 
 function doneBar() {
@@ -4422,9 +3243,7 @@ function doneBar() {
     props: {
       height: 44,
 
-      bgcolor: $color(
-        UI.TAB_BG
-      )
+      bgcolor: $color(UI.TAB_BG)
     },
 
     views: [
@@ -4434,14 +3253,9 @@ function doneBar() {
         props: {
           title: "Done",
 
-          titleColor: $color(
-            T.primary
-          ),
+          titleColor: $color(T.primary),
 
-          font: $font(
-            "bold",
-            16
-          )
+          font: $font("bold", 16)
         },
 
         layout: make => {
@@ -4451,10 +3265,7 @@ function doneBar() {
 
         events: {
           tapped(sender) {
-            pressFeedback(
-              sender,
-              blurAllInputs
-            );
+            pressFeedback(sender, blurAllInputs);
           }
         }
       }
@@ -4483,10 +3294,7 @@ function setText(id, text) {
 
   if (!view) return;
 
-  const value =
-    text == null
-      ? ""
-      : String(text);
+  const value = text == null ? "" : String(text);
 
   if (view.text !== value) {
     view.text = value;
@@ -4498,10 +3306,7 @@ function setTitle(id, text) {
 
   if (!view) return;
 
-  const value =
-    text == null
-      ? ""
-      : String(text);
+  const value = text == null ? "" : String(text);
 
   if (view.title !== value) {
     view.title = value;

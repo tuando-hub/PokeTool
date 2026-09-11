@@ -1,8 +1,8 @@
 {
-  "version": "2.0.22",
+  "version": "2.0.23",
   "changelog": {
     "items": [
-      "Fix lỗi login"
+      "Fix : chạy nhiều acc cùng lúc"
     ]
   }
 }

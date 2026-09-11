@@ -126,10 +126,7 @@ function copyDir(src, dst) {
 function findRootDir(tmpDir) {
   const items = $file.list(tmpDir) || [];
 
-  if (
-    items.length === 1 &&
-    $file.isDirectory(tmpDir + "/" + items[0])
-  ) {
+  if (items.length === 1 && $file.isDirectory(tmpDir + "/" + items[0])) {
     return tmpDir + "/" + items[0];
   }
 
@@ -159,10 +156,14 @@ async function doUpdate() {
 
     copyDir(rootDir, "");
 
-    try { $file.delete(zipPath); } catch (e) {
+    try {
+      $file.delete(zipPath);
+    } catch (e) {
       //
     }
-    try { $file.delete(tmpDir); } catch (e) {
+    try {
+      $file.delete(tmpDir);
+    } catch (e) {
       //
     }
 
@@ -178,7 +179,6 @@ async function doUpdate() {
         }
       ]
     });
-
   } catch (e) {
     $ui.alert("Update lỗi: " + String(e.message || e));
   }
@@ -200,9 +200,7 @@ async function check() {
 
     $ui.alert({
       title: "📣 New update 📣",
-      message:
-        "Version: " + remote.version + "\n\n" +
-        changelogText,
+      message: "Version: " + remote.version + "\n\n" + changelogText,
       actions: [
         { title: "Later" },
         {
@@ -211,7 +209,6 @@ async function check() {
         }
       ]
     });
-
   } catch (e) {
     console.log("Update failed:", e);
   }

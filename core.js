@@ -35,14 +35,7 @@ const MODES = [
   "ChangeProfileOrder"
 ];
 
-const TABS = [
-  "Dashboard",
-  "Data",
-  "Browser",
-  "Queue",
-  "Result",
-  "Settings"
-];
+const TABS = ["Dashboard", "Data", "Browser", "Queue", "Result", "Settings"];
 
 let state = {
   version: getAppVersion(),
@@ -94,11 +87,7 @@ let state = {
 };
 
 const MODE_FIELDS = {
-  Lottery: [
-    "imapEmail",
-    "imapPass",
-    "productIds"
-  ],
+  Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [
     "imapEmail",
@@ -108,7 +97,7 @@ const MODE_FIELDS = {
     "creditOwnerList",
     "creditList"
   ],
-  
+
   BuyJumpPlus: [
     "imapEmail",
     "imapPass",
@@ -117,13 +106,13 @@ const MODE_FIELDS = {
     "creditOwnerList",
     "creditList",
     "names",
-        "kanas",
-        "phones",
-        "postcode",
-        "pref",
-        "address1",
-        "address2",
-        "birthdate"
+    "kanas",
+    "phones",
+    "postcode",
+    "pref",
+    "address1",
+    "address2",
+    "birthdate"
   ],
 
   Create: [
@@ -161,16 +150,9 @@ const MODE_FIELDS = {
     "birthdate"
   ],
 
-  ChangeEmail: [
-    "imapEmail",
-    "imapPass"
-  ],
+  ChangeEmail: ["imapEmail", "imapPass"],
 
-  CheckResult: [
-    "imapEmail",
-    "imapPass",
-    "productIds"
-  ]
+  CheckResult: ["imapEmail", "imapPass", "productIds"]
 };
 
 let listeners = [];
@@ -307,10 +289,7 @@ function loadState() {
     state.form = Object.assign({}, state.form, config.form);
   }
 
-  const pendingText = listToAccountText(
-    loadJSON(FILE_PENDING, []),
-    state.mode
-  );
+  const pendingText = listToAccountText(loadJSON(FILE_PENDING, []), state.mode);
   if (pendingText) {
     state.form.mailList = pendingText;
   }
@@ -476,9 +455,7 @@ function refreshStats() {
     done: doneCount,
     failed: failedCount,
     skipped: 0,
-    percent: total
-      ? Math.floor(((doneCount + failedCount) * 100) / total)
-      : 0
+    percent: total ? Math.floor(((doneCount + failedCount) * 100) / total) : 0
   };
 
   persist();
@@ -557,7 +534,6 @@ function playSuccessSound() {
     $audio.play({
       path: "success.mp3"
     });
-
   } catch (e) {
     console.log("SOUND ERR", e);
   }

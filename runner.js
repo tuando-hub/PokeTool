@@ -9,10 +9,35 @@ const Create = require("./modes/create");
 const ChangeEmail = require("./modes/changeemail");
 const Buy = require("./modes/autobuy");
 const BuyJumpPlus = require("./modes/buyjumpplus");
-
+const Session = require("./services/session");
 
 let STOP_FLAG = false;
 let START_TIME = 0;
+
+const WORKER_CACHE_KEY = "PokeTool.V1.MaxWorkers";
+
+function clampWorkers(value) {
+  const n = Number(value || 2);
+  return Math.max(1, Math.min(10, Math.floor(n)));
+}
+
+function getMaxWorkers() {
+  try {
+    return clampWorkers($cache.get(WORKER_CACHE_KEY) || 2);
+  } catch (_) {
+    return 2;
+  }
+}
+
+function setMaxWorkers(value) {
+  const workers = clampWorkers(value);
+
+  try {
+    $cache.set(WORKER_CACHE_KEY, workers);
+  } catch (_) {}
+
+  return workers;
+}
 
 function checkStop() {
   if (STOP_FLAG) {
@@ -43,8 +68,7 @@ function pushDone(acc, meta) {
     email: acc.email,
     pass: acc.pass,
     text:
-      meta &&
-      meta.paymentCode
+      meta && meta.paymentCode
         ? `${acc.email}:${acc.pass}\t${meta.paymentCode}`
         : `${acc.email}:${acc.pass}`,
     doneAt: Date.now(),
@@ -59,12 +83,14 @@ function pushFailed(acc, error, meta) {
   const list = Core.loadJSON(Core.FILE_FAILED, []);
   const reason = String(error || "Unknown error");
 
-  list.push(Object.assign({}, acc, {
-    text: `${acc.email}:${acc.pass}\t${reason}`,
-    reason,
-    failedAt: Date.now(),
-    meta: meta || {}
-  }));
+  list.push(
+    Object.assign({}, acc, {
+      text: `${acc.email}:${acc.pass}\t${reason}`,
+      reason,
+      failedAt: Date.now(),
+      meta: meta || {}
+    })
+  );
 
   Core.saveJSON(Core.FILE_FAILED, list);
   Core.refreshStats();
@@ -85,7 +111,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "CheckResult") {
     return await CheckResult.runAccount({
       acc,
@@ -95,7 +121,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "ChangeProfileOrder") {
     return await ChangeProfileOrder.runAccount({
       acc,
@@ -105,7 +131,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "Create") {
     return await Create.runAccount({
       acc,
@@ -115,7 +141,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "ChangeEmail") {
     return await ChangeEmail.runAccount({
       acc,
@@ -125,7 +151,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "Buy") {
     return await Buy.runAccount({
       acc,
@@ -135,7 +161,7 @@ async function runOneAccount(acc, index, total) {
       stopCheck: checkStop
     });
   }
-  
+
   if (mode === "BuyJumpPlus") {
     return await BuyJumpPlus.runAccount({
       acc,
@@ -154,18 +180,12 @@ function validateBeforeRun() {
   const f = s.form || {};
   const mode = s.mode;
   const errors = [];
-  const imapEmail =
-    String(f.imapEmail || "").trim();
-  const imapPass =
-    String(f.imapPass || "").trim();
-  const mailList =
-    String(f.mailList || "").trim();
-  const productIds =
-    String(f.productIds || "").trim();
-  const buyQty =
-    String(f.buyQty || "").trim();
-  const accounts =
-    Core.parseAccounts(mailList, mode);
+  const imapEmail = String(f.imapEmail || "").trim();
+  const imapPass = String(f.imapPass || "").trim();
+  const mailList = String(f.mailList || "").trim();
+  const productIds = String(f.productIds || "").trim();
+  const buyQty = String(f.buyQty || "").trim();
+  const accounts = Core.parseAccounts(mailList, mode);
   if (!mode) {
     errors.push("Chưa chọn Mode");
   }
@@ -181,14 +201,9 @@ function validateBeforeRun() {
   if (mailList && accounts.length === 0) {
     errors.push("MAIL LIST sai định dạng");
   }
-  if (
-    mode === "Buy" ||
-    mode === "BuyJumpPlus"
-  ) {
-    const creditList =
-      String(f.creditList || "").trim();
-    const creditOwnerList =
-      String(f.creditOwnerList || "").trim();
+  if (mode === "Buy" || mode === "BuyJumpPlus") {
+    const creditList = String(f.creditList || "").trim();
+    const creditOwnerList = String(f.creditOwnerList || "").trim();
     if (!creditList) {
       errors.push("Thiếu CREDIT LIST");
     }
@@ -207,60 +222,45 @@ function validateBeforeRun() {
       errors.push("Thiếu PRODUCT IDS");
     }
   }
-  if (
-    mode === "Buy" ||
-    mode === "BuyJumpPlus"
-  ) {
+  if (mode === "Buy" || mode === "BuyJumpPlus") {
     const qty = Number(buyQty);
-    if (
-      !Number.isInteger(qty) ||
-      qty <= 0
-    ) {
+    if (!Number.isInteger(qty) || qty <= 0) {
       errors.push("BUY QTY không hợp lệ");
     }
   }
-  if (
-    mode === "Create" ||
-    mode === "BuyJumpPlus"
-  ) {
+  if (mode === "Create" || mode === "BuyJumpPlus") {
     if (!String(f.names || "").trim()) {
       errors.push("Thiếu NAMES");
     }
-  
+
     if (!String(f.kanas || "").trim()) {
       errors.push("Thiếu KANAS");
     }
-    if (
-      mode === "Create" &&
-      !String(f.phones || "").trim()
-    ) {
+    if (mode === "Create" && !String(f.phones || "").trim()) {
       errors.push("Thiếu PHONES");
     }
-  
+
     if (!String(f.postcode || "").trim()) {
       errors.push("Thiếu POSTCODE");
     }
-  
+
     if (!String(f.pref || "").trim()) {
       errors.push("Thiếu PREF");
     }
-  
+
     if (!String(f.address1 || "").trim()) {
       errors.push("Thiếu CITY");
     }
-  
+
     if (!String(f.address2 || "").trim()) {
       errors.push("Thiếu ADDRESS");
     }
-  
+
     if (!String(f.birthdate || "").trim()) {
       errors.push("Thiếu BIRTHDATE");
     }
   }
-  if (
-    mode === "ChangeProfile" ||
-    mode === "ChangeProfileOrder"
-  ) {
+  if (mode === "ChangeProfile" || mode === "ChangeProfileOrder") {
     const hasAnyProfile =
       String(f.names || "").trim() ||
       String(f.kanas || "").trim() ||
@@ -284,12 +284,48 @@ function validateBeforeRun() {
       });
     if (bad.length > 0) {
       errors.push(
-        "ChangeEmail cần dạng " +
-        "oldmail:pass:newmail:imapmail:imappass"
+        "ChangeEmail cần dạng " + "oldmail:pass:newmail:imapmail:imappass"
       );
     }
   }
   return errors;
+}
+
+async function runAccountJob(acc, index, total) {
+  try {
+    Core.addLog("*************************************", "info");
+    Core.addLog("[A" + index + "] Start account: " + acc.email, "info");
+
+    const result = await runOneAccount(acc, index, total);
+
+    if (STOP_FLAG) {
+      return {
+        acc,
+        index,
+        stopped: true
+      };
+    }
+
+    return {
+      acc,
+      index,
+      result
+    };
+  } catch (error) {
+    if (error && error.message === "__STOP__") {
+      return {
+        acc,
+        index,
+        stopped: true
+      };
+    }
+
+    return {
+      acc,
+      index,
+      error
+    };
+  }
 }
 
 async function run() {
@@ -297,16 +333,16 @@ async function run() {
     Core.addLog("Runner already running", "warn");
     return;
   }
-  
+
   const errors = validateBeforeRun();
-  
+
   if (errors.length > 0) {
     $ui.alert({
       title: "Không thể RUN",
       message: errors.map((e, i) => `${i + 1}. ${e}`).join("\n"),
       actions: ["OK"]
     });
-  
+
     Core.addLog("Validate failed: " + errors.length + " errors", "error");
     return;
   }
@@ -315,12 +351,21 @@ async function run() {
   START_TIME = Date.now();
 
   Core.setRunning(true);
-  Core.addLog("Runner started", "success");
+
+  const maxWorkers = getMaxWorkers();
+  const parallel = maxWorkers > 1;
+
+  Core.addLog("Runner started / workers=" + maxWorkers, "success");
+
+  // Khi nhiều account chạy đồng thời, không reset IP giữa lúc
+  // worker khác còn đang dùng network. Reset một lần sau mỗi batch.
+  Session.setDeferNetworkReset(parallel);
 
   try {
     let pending = getPending();
     const total = Core.getState().stats.total || pending.length;
-    
+
+    // Giữ nguyên flow CheckResult cũ.
     if (Core.getState().mode === "CheckResult") {
       await CheckResult.run({
         form: Core.getState().form,
@@ -342,26 +387,52 @@ async function run() {
         break;
       }
 
-      const acc = pending[0];
-      const index = total - pending.length + 1;
+      const batchSize = Math.min(maxWorkers, pending.length);
+      const batch = pending.slice(0, batchSize);
+      const baseIndex = total - pending.length;
 
-      try {
-        Core.addLog("*************************************", "info");
-        Core.addLog("Start account: " + acc.email, "info");
+      Core.addLog("Start batch: " + batch.length + " account(s)", "info");
 
-        const result = await runOneAccount(acc, index, total);
+      const jobs = batch.map((acc, offset) =>
+        runAccountJob(acc, baseIndex + offset + 1, total)
+      );
 
-        if (STOP_FLAG) {
-          Core.addLog("Runner stopped before saving result", "warn");
-          break;
+      const outcomes = await Promise.all(jobs);
+      let changed = false;
+
+      for (const outcome of outcomes) {
+        if (!outcome || outcome.stopped) {
+          continue;
         }
 
-        pending.shift();
-        savePending(pending);
+        const acc = outcome.acc;
+        const pos = pending.indexOf(acc);
+
+        if (pos >= 0) {
+          pending.splice(pos, 1);
+          changed = true;
+        }
+
+        if (outcome.error) {
+          pushFailed(acc, outcome.error.message || outcome.error, {
+            data: acc.data
+          });
+
+          Core.addLog(
+            "Failed: " +
+              acc.email +
+              " / " +
+              (outcome.error.message || outcome.error),
+            "error"
+          );
+          continue;
+        }
+
+        const result = outcome.result;
 
         if (result && result.ok === false) {
           pushFailed(acc, result.reason || "UNKNOWN_ERROR", result);
-        
+
           Core.addLog(
             "Failed: " + acc.email + " / " + (result.reason || "UNKNOWN_ERROR"),
             "error"
@@ -370,32 +441,24 @@ async function run() {
           pushDone(acc, result);
           Core.addLog("Done: " + acc.email, "success");
         }
-      } catch (e) {
-        if (e.message === "__STOP__") {
-          Core.addLog("Runner stopped", "warn");
-          break;
-        }
+      }
 
-        pending.shift();
+      if (changed) {
         savePending(pending);
-
-        pushFailed(acc, e.message || e, {
-          data: acc.data
-        });
-
-        Core.addLog(
-          "Failed: " + acc.email + " / " + (e.message || e),
-          "error"
-        );
-
-        try {
-          Web.destroy();
-        } catch (_) {
-          //
-        }
       }
 
       Core.refreshStats();
+
+      if (parallel) {
+        try {
+          await Session.flushDeferredReset();
+        } catch (_) {}
+      }
+
+      if (STOP_FLAG) {
+        Core.addLog("Runner stopped by user", "warn");
+        break;
+      }
     }
 
     Core.updateCurrent({
@@ -404,35 +467,33 @@ async function run() {
       status: STOP_FLAG ? "Stopped" : "Finished",
       elapsed: elapsedText()
     });
-
-  } catch (e) {
-    Core.addLog("Runner fatal: " + (e.message || e), "error");
-    $ui.alert(String(e.message || e));
+  } catch (error) {
+    Core.addLog("Runner fatal: " + (error.message || error), "error");
+    $ui.alert(String(error.message || error));
   } finally {
     try {
-      BuyJumpPlus
-        .resetSelection();
+      if (parallel) {
+        await Session.flushDeferredReset();
+      }
+    } catch (_) {}
+
+    Session.setDeferNetworkReset(false);
+
+    try {
+      BuyJumpPlus.resetSelection();
     } catch (error) {
       Core.addLog(
         "Reset Jump selection lỗi: " +
-          String(
-            error &&
-            error.message
-              ? error.message
-              : error
-          ),
+          String(error && error.message ? error.message : error),
         "warn"
       );
     }
-  
+
     Core.setRunning(false);
     Core.refreshStats();
-  
+
     if (!STOP_FLAG) {
-      Core.addLog(
-        "Runner finished",
-        "info"
-      );
+      Core.addLog("Runner finished", "info");
     }
   }
 }
@@ -443,7 +504,7 @@ function stop() {
   Core.addLog("Stop requested", "warn");
 
   try {
-    Web.destroy();
+    Web.destroyAll();
   } catch (_) {
     //
   }
@@ -451,5 +512,7 @@ function stop() {
 
 module.exports = {
   run,
-  stop
+  stop,
+  getMaxWorkers,
+  setMaxWorkers
 };

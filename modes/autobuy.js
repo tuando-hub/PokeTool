@@ -23,6 +23,7 @@ const CART_URL =
 
 let PAYMENT_METHOD = "";
 let PAYMENT_CANCELLED = false;
+let PAYMENT_PROMISE = null;
 
 // ============================================================
 // BASIC HELPERS
@@ -198,11 +199,11 @@ function choosePaymentMethod() {
 }
 
 async function preparePayment(index) {
-  // Mỗi lần Runner mới chạy, account đầu tiên luôn có index = 1.
-  // Reset lựa chọn cũ để hiện menu lại.
+  // Worker đầu tiên reset lựa chọn cho lần RUN mới.
   if (index === 1) {
     PAYMENT_METHOD = "";
     PAYMENT_CANCELLED = false;
+    PAYMENT_PROMISE = null;
   }
 
   if (PAYMENT_CANCELLED) {
@@ -213,8 +214,16 @@ async function preparePayment(index) {
     return PAYMENT_METHOD;
   }
 
-  PAYMENT_METHOD =
-    await choosePaymentMethod();
+  // Multi-worker: chỉ cho phép một payment menu mở.
+  if (!PAYMENT_PROMISE) {
+    PAYMENT_PROMISE = choosePaymentMethod();
+  }
+
+  try {
+    PAYMENT_METHOD = await PAYMENT_PROMISE;
+  } finally {
+    PAYMENT_PROMISE = null;
+  }
 
   if (!PAYMENT_METHOD) {
     PAYMENT_CANCELLED = true;

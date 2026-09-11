@@ -3,6 +3,9 @@
 const Core = require("../core");
 const Web = require("../web");
 
+let DEFER_NETWORK_RESET = false;
+let NETWORK_RESET_REQUESTED = false;
+
 function checkStop(stopCheck) {
   if (typeof stopCheck === "function") {
     stopCheck();
@@ -81,7 +84,7 @@ async function cleanupAccount(
   }
 
   try {
-    Web.destroy();
+    Web.destroy(wv);
   } catch (_) {
     //
   }
@@ -559,38 +562,53 @@ async function clearJumpSession(
 // RESET IP
 // ======================================================
 
-async function resetIP() {
-  console.log(
-    "[SESSION] RESET IP START"
-  );
+function setDeferNetworkReset(value) {
+  DEFER_NETWORK_RESET = value === true;
+
+  if (!DEFER_NETWORK_RESET) {
+    NETWORK_RESET_REQUESTED = false;
+  }
+}
+
+async function performResetIP() {
+  console.log("[SESSION] RESET IP START");
 
   try {
     $app.openURL(
       "shortcuts://run-shortcut?name=" +
-        encodeURIComponent(
-          "Reset IP"
-        )
+        encodeURIComponent("Reset IP")
     );
 
     await Web.delay(7500);
-
-    console.log(
-      "[SESSION] RESET IP OK"
-    );
-
+    console.log("[SESSION] RESET IP OK");
     return true;
-
   } catch (error) {
     console.log(
       "[SESSION] RESET IP ERROR:",
-      String(
-        error.message ||
-        error
-      )
+      String(error.message || error)
     );
 
     return false;
   }
+}
+
+async function resetIP() {
+  if (DEFER_NETWORK_RESET) {
+    NETWORK_RESET_REQUESTED = true;
+    console.log("[SESSION] RESET IP DEFERRED");
+    return true;
+  }
+
+  return await performResetIP();
+}
+
+async function flushDeferredReset() {
+  if (!NETWORK_RESET_REQUESTED) {
+    return false;
+  }
+
+  NETWORK_RESET_REQUESTED = false;
+  return await performResetIP();
 }
 
 module.exports = {
@@ -600,5 +618,7 @@ module.exports = {
   ensureJumpLoggedOut,
   clearCurrentOrigin,
   clearJumpSession,
-  resetIP
+  resetIP,
+  setDeferNetworkReset,
+  flushDeferredReset
 };

@@ -118,7 +118,7 @@ function callNodeCheckMail({ imapEmail, imapPass, mails, date, checker, productI
     });
 
     $nodejs.run({
-      name: "GETOtp",
+      name: "PokeTool/node/getotp",
       argv: [
         imapEmail,
         imapPass,

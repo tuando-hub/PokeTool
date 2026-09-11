@@ -8,6 +8,8 @@ const Web = require("../web");
 
 let SELECTED_ACTION = null;
 let SELECTED_PAYMENT = null;
+let SELECTION_PROMISE = null;
+let JUMP_CONFIG_PROMISE = null;
 
 function checkStop(stopCheck) {
   if (
@@ -18,7 +20,7 @@ function checkStop(stopCheck) {
   }
 }
 
-async function askJumpConfig() {
+async function askJumpConfigInner() {
   let bearer =
     $cache.get(
       "jumpcs_bearer"
@@ -75,6 +77,18 @@ async function askJumpConfig() {
         deviceId
       ).trim()
     );
+  }
+}
+
+async function askJumpConfig() {
+  if (!JUMP_CONFIG_PROMISE) {
+    JUMP_CONFIG_PROMISE = askJumpConfigInner();
+  }
+
+  try {
+    return await JUMP_CONFIG_PROMISE;
+  } finally {
+    JUMP_CONFIG_PROMISE = null;
   }
 }
 
@@ -451,7 +465,7 @@ async function runCreateFlow({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(webView);
       } catch (_) {
         //
       }
@@ -669,7 +683,7 @@ async function runBuyFlow({
       }
 
       try {
-        Web.destroy();
+        Web.destroy(webView);
       } catch (_) {
         //
       }
@@ -806,16 +820,25 @@ async function runAccount({
     selectedMode !== "buy"
   ) {
     if (!SELECTED_ACTION) {
-      SELECTED_ACTION =
-        await askMode();
+      if (!SELECTION_PROMISE) {
+        SELECTION_PROMISE = (async () => {
+          const action = await askMode();
+          let payment = null;
 
-      if (
-        SELECTED_ACTION ===
-        "buy"
-      ) {
-        SELECTED_PAYMENT =
-          await askPaymentMethod();
+          if (action === "buy") {
+            payment = await askPaymentMethod();
+          }
+
+          return {
+            action,
+            payment
+          };
+        })();
       }
+
+      const selection = await SELECTION_PROMISE;
+      SELECTED_ACTION = selection.action;
+      SELECTED_PAYMENT = selection.payment;
     }
 
     selectedMode =
@@ -889,6 +912,8 @@ async function runAccount({
 function resetSelection() {
   SELECTED_ACTION = null;
   SELECTED_PAYMENT = null;
+  SELECTION_PROMISE = null;
+  JUMP_CONFIG_PROMISE = null;
 
   console.log(
     "[JUMP SELECTION RESET]"
