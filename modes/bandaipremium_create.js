@@ -56,11 +56,12 @@ function watchOtp(wv, acc, onSuccess, smsInfo) {
           if (!otp || token.cancelled || wv._destroyed) {
             log('SMS API: không nhận được OTP', 'warn'); return;
           }
-          await until(wv, 'return document.querySelector("input#code[name=\"code\"]")?"YES":"NO"', () => {
-            if (token.cancelled) throw new Error('SMS_WATCH_CANCELLED');
-          }, 10000);
+          await until(wv, 'return document.querySelector("#code")?"YES":"NO"', () => {
+            if (token.cancelled || wv._destroyed) throw new Error('SMS_WATCH_CANCELLED');
+          }, 30000);
           const injected = await js(wv, 'var e=document.querySelector("input#code");if(!e)return "MISSING";e.value='+JSON.stringify(otp)+';e.dispatchEvent(new Event("input",{bubbles:true}));e.dispatchEvent(new Event("change",{bubbles:true}));return "OK";');
-          if (injected === 'OK') log('SMS API: đã nhập OTP, chờ tự gửi', 'success');
+          if (injected === 'OK') log('SMS API: đã nhập OTP vào 確認コード, chờ nút 送信する tự gửi', 'success');
+          else log('SMS API: không thể nhập OTP: '+injected, 'error');
         } catch(e) { if (!token.cancelled) log('SMS API: '+String(e.message||e), 'error'); }
       })();
     }
@@ -177,6 +178,14 @@ async function runAccount({acc,index,form,stopCheck}) {
       log('Passkey transition timeout: ' + state, 'error');
       throw new Error('PASSKEY_NEXT_PAGE_TIMEOUT_10S');
     }
+    // Registration form is ready: order a phone BEFORE filling any profile fields.
+    if (smsEnabled) {
+      SmsApi.configure(f.premiumSmsId, f.premiumSmsPass);
+      progress(acc, 4, 'SMS API: đặt số điện thoại');
+      smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
+      phone = smsInfo.phone;
+      log('SMS API: nhận số cho '+acc.email+' / '+phone, 'success');
+    }
     progress(acc, 4, 'Điền thông tin đăng ký');
     await fill(wv, {
       '[name="family_name"]':name[0], '[name="name"]':name.slice(1).join(' '),
@@ -186,13 +195,6 @@ async function runAccount({acc,index,form,stopCheck}) {
     await click(wv, '#BTN3', stopCheck);
     // Wait for the website's own postal lookup to populate the address.
     await until(wv, 'var a=document.querySelector(\'[name="own_addr2"]\');return a&&a.value.trim()?"YES":"NO"', stopCheck);
-    if (smsEnabled) {
-      SmsApi.configure(f.premiumSmsId, f.premiumSmsPass);
-      progress(acc, 4, 'SMS API: đặt số điện thoại');
-      smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
-      phone = smsInfo.phone;
-      log('SMS API: nhận số cho '+acc.email+' / '+phone, 'success');
-    }
     await fill(wv, {'[name="own_addr3"]':banchi, '[name="tel1"]':phone,
       '#pass':acc.pass, '#pass2':acc.pass}, stopCheck);
     // Do not change DOB, gender or opt into 2FA.

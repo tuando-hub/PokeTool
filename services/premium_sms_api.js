@@ -3,7 +3,7 @@
 // ======================================================
 
 const API_BASE =
-  "https://northdinhjpn.online/api";
+  "https://gsmcloudjpn.online/api";
 
 let API_USERNAME = "";
 
@@ -22,7 +22,7 @@ const ORDER_MAX_RETRY =
   3;
 
 // Cache riêng cho từng username
-const TOKEN_CACHE_KEY = "premium_north_token_isolated";
+const TOKEN_CACHE_KEY = "premium_gsmcloud_token_v1";
 
 // ======================================================
 // TOKEN
@@ -151,27 +151,22 @@ async function login(
     resetToken();
   }
 
-  const url =
-    API_BASE +
-    "/login" +
-    "?username=" +
-    encodeURIComponent(
-      API_USERNAME
-    ) +
-    "&password=" +
-    encodeURIComponent(
-      API_PASSWORD
-    ) +
-    "&t=" +
-    Date.now();
+  const url = API_BASE + "/login";
 
-  const res =
-    await $http.get({
-      url,
-      timeout: 20,
-      header:
-        requestHeaders()
-    });
+  const res = await $http.post({
+    url,
+    timeout: 20,
+    header: {
+      ...requestHeaders(),
+      "Content-Type": "application/json",
+      "Origin": "https://gsmcloudjpn.online",
+      "Referer": "https://gsmcloudjpn.online/"
+    },
+    body: {
+      username: API_USERNAME,
+      password: API_PASSWORD
+    }
+  });
 
   const data =
     res.data;
@@ -338,7 +333,7 @@ async function order(
         encodeURIComponent(
           token
         ) +
-        "&serviceId=335" +
+        "&serviceId=8" +
         "&khoType=yma" +
         "&t=" +
         Date.now();
