@@ -95,7 +95,7 @@ const MODE_FIELDS = {
   "BandaiNamco_Create": ["mailList", "birthdate"],
   "BandaiNamco_Lottery": ["mailList", "productIds"],
   "BandaiPremium_Create": ["mailList", "names", "kanas", "phones", "postcode", "address2"],
-  "BandaiPremium_Lottery": ["mailList", "productIds"],
+  "BandaiPremium_Lottery": ["mailList", "productIds", "creditOwnerList", "creditList"],
   Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [

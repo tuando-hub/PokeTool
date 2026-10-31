@@ -3110,7 +3110,7 @@ function getModeSections(mode) {
       mode === "BuyJumpPlus" ||
       mode === "ChangeProfileOrder",
 
-    payment: mode === "Buy" || mode === "BuyJumpPlus"
+    payment: mode === "Buy" || mode === "BuyJumpPlus" || mode === "BandaiPremium_Lottery"
   };
 }
 

@@ -13,6 +13,7 @@ const Session = require("./services/session");
 const BandaiNamcoCreate = require("./modes/bandainamco_create");
 const BandaiImap = require("./services/bandai_imap_manager");
 const BandaiPremiumCreate = require("./modes/bandaipremium_create");
+const BandaiPremiumLottery = require("./modes/bandaipremium_lottery");
 
 let STOP_FLAG = false;
 let START_TIME = 0;
@@ -105,6 +106,10 @@ async function runOneAccount(acc, index, total) {
 
   const mode = Core.getState().mode;
   const form = Core.getState().form;
+
+  if (mode === "BandaiPremium_Lottery") {
+    return await BandaiPremiumLottery.runAccount({acc,index,total,form,stopCheck:checkStop});
+  }
 
   if (mode === "BandaiPremium_Create") {
     return await BandaiPremiumCreate.runAccount({ acc, index, total, form, stopCheck: checkStop });
@@ -209,7 +214,7 @@ function validateBeforeRun() {
   if (mailList && accounts.length === 0) {
     errors.push("MAIL LIST sai định dạng");
   }
-  if (mode === "Buy" || mode === "BuyJumpPlus") {
+  if (mode === "Buy" || mode === "BuyJumpPlus" || mode === "BandaiPremium_Lottery") {
     const creditList = String(f.creditList || "").trim();
     const creditOwnerList = String(f.creditOwnerList || "").trim();
     if (!creditList) {
@@ -221,6 +226,7 @@ function validateBeforeRun() {
   }
   if (
     mode === "Lottery" ||
+    mode === "BandaiPremium_Lottery" ||
     mode === "Buy" ||
     mode === "BuyJumpPlus" ||
     mode === "CheckResult" ||
@@ -351,7 +357,7 @@ async function run() {
   }
 
   const selectedMode = Core.getState().mode;
-  if (/^Bandai(Namco_Lottery|Premium_Lottery)$/.test(selectedMode)) {
+  if (selectedMode === "BandaiNamco_Lottery") {
     $ui.alert({
       title: "Mode chưa có xử lý",
       message: "Đã thêm giao diện và lựa chọn mode. Chức năng RUN cho " + selectedMode + " chưa được tích hợp; các mode cũ vẫn hoạt động bình thường."
@@ -403,6 +409,33 @@ async function run() {
     if (!pending.length) {
       Core.addLog("No pending accounts", "warn");
       $ui.toast("No pending accounts");
+      return;
+    }
+
+    if (selectedMode === "BandaiPremium_Lottery") {
+      while (pending.length && !STOP_FLAG) {
+        const acc = pending[0];
+        const index = total - pending.length + 1;
+        const outcome = await runAccountJob(acc,index,total);
+        if (STOP_FLAG || outcome.stopped) break;
+        if (outcome.error || !outcome.result || outcome.result.ok !== true) {
+          const reason = String(outcome.error ? outcome.error.message || outcome.error : 'LOTTERY_NOT_COMPLETED');
+          pushFailed(acc,reason);
+          Core.addLog('[Premium Lottery] Failed '+acc.email+': '+reason,'error');
+          // Do not automatically advance to another account on an uncertain payment state.
+          break;
+        }
+        pushDone(acc,outcome.result);
+        pending.shift();
+        savePending(pending);
+        Core.refreshStats();
+        Core.addLog('[Premium Lottery] Clear WebView done; Reset IP', 'warn');
+        Session.setDeferNetworkReset(false);
+        const resetOk = await Session.resetIP();
+        if (!resetOk) { Core.addLog('[Premium Lottery] Reset IP failed; stop', 'error'); break; }
+        Session.setDeferNetworkReset(parallel);
+      }
+      Core.updateCurrent({step:STOP_FLAG?'Stopped':'Lottery finished/paused',status:STOP_FLAG?'Stopped':'Finished',elapsed:elapsedText()});
       return;
     }
 

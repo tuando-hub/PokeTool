@@ -1,8 +1,8 @@
 {
-  "version": "2.0.26",
+  "version": "2.0.27",
   "changelog": {
     "items": [
-      "Thêm : Mode tạo acc của Bandainamco & BandaiPremium"
+      "Thêm : Mode chusen BandaiPremium"
     ]
   }
 }

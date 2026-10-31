@@ -183,7 +183,13 @@ async function runAccount({acc,index,form,stopCheck}) {
       SmsApi.configure(f.premiumSmsId, f.premiumSmsPass);
       progress(acc, 4, 'SMS API: đặt số điện thoại');
       smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
-      phone = smsInfo.phone;
+      // Normalize the GSMCloud number before filling the registration form.
+      const rawPhone = String(smsInfo.phone == null ? '' : smsInfo.phone).trim();
+      const phoneDigits = rawPhone.replace(/[\s()\-]/g, '');
+      if (!/^\d+$/.test(phoneDigits) || phoneDigits.length < 9 || phoneDigits.length > 11) {
+        throw new Error('SMS_API_INVALID_PHONE_FORMAT');
+      }
+      phone = phoneDigits.startsWith('0') ? phoneDigits : '0' + phoneDigits;
       log('SMS API: nhận số cho '+acc.email+' / '+phone, 'success');
     }
     progress(acc, 4, 'Điền thông tin đăng ký');
