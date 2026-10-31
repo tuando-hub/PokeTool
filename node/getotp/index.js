@@ -1,3 +1,4 @@
+
 const Imap = require("imap");
 const { simpleParser } = require("mailparser");
 const axios = require("axios");
@@ -147,6 +148,39 @@ function extractJumpCSOtp(text) {
   return match ? match[1] : null;
 }
 
+// Bandai Namco
+function extractBandaiNamcoOtp(subject, body) {
+
+  const normalizedSubject = String(subject || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (
+    !normalizedSubject.includes("バンダイナムコID") ||
+    !normalizedSubject.includes("認証コード確認")
+  ) {
+    return null;
+  }
+
+  const text = String(body || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&");
+
+  let match = text.match(
+    /認証コード\s*\*+\s*(\d{6})\s*\*+/m
+  );
+
+  if (!match) {
+    match = text.match(
+      /認証コード[\s\S]{0,100}?(\d{6})/
+    );
+  }
+
+  return match ? match[1] : null;
+}
+
 // ================= SEARCH =================
 function search(imap, criteria) {
 
@@ -235,7 +269,7 @@ function extractJumpPaymentCode(text) {
 }
 
 // ================= FETCH =================
-function fetchMail(imap, uid) {
+function fetchMail(imap, uid, markSeen = true) {
 
   return new Promise(resolve => {
 
@@ -262,7 +296,7 @@ function fetchMail(imap, uid) {
       uid,
       {
         bodies: "",
-        markSeen: true
+        markSeen: markSeen
       }
     );
 
@@ -575,7 +609,7 @@ async function runJumpConbini(
             ]
           ]
         );
-      
+
       const unseen =
         await search(
           imap,
@@ -583,12 +617,12 @@ async function runJumpConbini(
             "UNSEEN"
           ]
         );
-      
+
       const unseenSet =
         new Set(
           unseen.map(Number)
         );
-      
+
       const latestIds =
         toIds
           .map(Number)
@@ -614,13 +648,13 @@ async function runJumpConbini(
         }
 
         checkedUids.add(uid);
-        
+
         const mail =
           await fetchMail(
             imap,
             uid
           );
-        
+
         if (!mail) {
           continue;
         }
@@ -742,7 +776,7 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
     });
     return;
   }
-  
+
   if (!productId) {
     $jsbox.notify(eventId, {
       ok: false,
@@ -775,29 +809,29 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
     }
 
     log("BATCH FETCH START:", ids.length);
-    
+
     const messages = await fetchMailNoSeen(imap, ids);
-    
+
     log("BATCH FETCH DONE:", messages.length);
-    
+
     for (const msg of messages) {
-    
+
       const toField = String(
         msg.to?.text || ""
       ).toLowerCase();
-    
+
       const sub = String(msg.subject || "");
-    
+
       if (!SUBJECT_KEYWORDS.some(k => sub.includes(k))) {
         continue;
       }
-    
+
       const body = `
     ${sub}
     ${msg.text || ""}
     ${msg.html || ""}
     `;
-    
+
       // chỉ lấy mail của đúng product đang check
       if (
         productId &&
@@ -805,23 +839,23 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
       ) {
         continue;
       }
-    
+
       for (const m of mails) {
-    
+
         const key = m.toLowerCase();
-    
+
         if (!toField.includes(key))
           continue;
-    
+
         resultMap[key].foundCount++;
-    
+
         if (body.includes("当選")) {
           resultMap[key].win = true;
         }
         else if (body.includes("落選")) {
           resultMap[key].lostCount++;
         }
-    
+
         break;
       }
     }
@@ -829,7 +863,7 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
     for (const m of mails) {
       const key = m.toLowerCase();
       const r = resultMap[key];
-    
+
       if (!r || r.foundCount === 0) {
         NOTMAIL.push(m);
       } else if (r.win) {
@@ -969,17 +1003,17 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
       "INBOX",
       false,
       async (err, box) => {
-    
+
         if (err) {
-    
+
           log(
             "OPENBOX ERROR:",
             err.message || err
           );
-    
+
           return done(null);
         }
-        
+
         if (mode === "CheckMail") {
           await runCheckMail(
             imap,
@@ -988,11 +1022,11 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
             eventId,
             extraRaw
           );
-        
+
           closeImap(imap);
           return;
         }
-        
+
         if (
           mode ===
           "JumpConbini"
@@ -1003,7 +1037,7 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
             extraRaw,
             done
           );
-        
+
           return;
         }
 
@@ -1012,34 +1046,35 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
         while (
           Date.now() - start < TIMEOUT
         ) {
-        
+
           if (finished) return;
-        
+
           log("CHECK EMAIL...");
-        
+
           try {
-        
+
             const OTP_SUBJECT =
               "[ポケモンセンターオンライン]ログイン用パスコードのお知らせ";
-        
+
             let ids = [];
-        
+
             if (mode === "JumpCSRegistered") {
-        
+
               ids = await search(
                 imap,
                 [
                   ["TO", target]
                 ]
               );
-        
+
             } else if (
+              mode !== "BandaiNamcoOTP" &&
               mode !== "Create" &&
               mode !== "JumpPlusCreate" &&
               mode !== "JumpCSCreate" &&
               mode !== "ChangeEmail"
             ) {
-        
+
               ids = await search(
                 imap,
                 [
@@ -1048,9 +1083,30 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
                   ["SUBJECT", OTP_SUBJECT]
                 ]
               );
-        
+
+            // =========================
+            // BANDAI NAMCO - GIỐNG POKEMON
+            // =========================
+            } else if (mode === "BandaiNamcoOTP") {
+            
+              const toIds = await search(imap, [
+                ["TO", target]
+              ]);
+            
+              const unseenIds = await search(imap, [
+                "UNSEEN"
+              ]);
+            
+              const unseenSet = new Set(
+                unseenIds.map(Number)
+              );
+            
+              ids = toIds.filter(uid =>
+                unseenSet.has(Number(uid))
+              );
+            
             } else {
-        
+
               ids = await search(
                 imap,
                 [
@@ -1059,35 +1115,36 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
                 ]
               );
             }
-        
+
             ids = ids
               .map(Number)
               .filter(
                 uid =>
                   Number.isFinite(uid)
               );
-        
+
             log("MATCH IDS:", ids);
-        
+
             if (ids.length) {
-        
+
               const uid =
                 Math.max(...ids);
-        
+
               // phần dưới giữ nguyên
 
               log(
                 "FETCH UID:",
                 uid
               );
-              
+
               const isPokemonOtp =
+                mode !== "BandaiNamcoOTP" &&
                 mode !== "Create" &&
                 mode !== "JumpPlusCreate" &&
                 mode !== "JumpCSCreate" &&
                 mode !== "JumpCSRegistered" &&
                 mode !== "ChangeEmail";
-              
+
               const mail =
                 isPokemonOtp
                   ? await fetchPokemonOtpMail(
@@ -1096,7 +1153,8 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
                     )
                   : await fetchMail(
                       imap,
-                      uid
+                      uid,
+                      true
                     );
 
               if (mail) {
@@ -1142,11 +1200,14 @@ ${mail.html || ""}
                 // GET VALUE
                 // =========================
                 let value = null;
-                
-                if (mode === "Create") {
+
+                if (mode === "BandaiNamcoOTP") {
+                  value = extractBandaiNamcoOtp(subject, content);
+
+                } else if (mode === "Create") {
                   value =
                     extractCreateLink(content);
-                
+
                 } else if (
                   mode === "JumpPlusCreate"
                 ) {
@@ -1154,13 +1215,13 @@ ${mail.html || ""}
                     extractJumpPlusCreateLink(
                       content
                     );
-                
+
                 } else if (
                   mode === "JumpCSCreate"
                 ) {
                   value =
                     extractJumpCSOtp(content);
-                
+
                 } else if (
                   mode === "JumpCSRegistered"
                 ) {
@@ -1168,17 +1229,17 @@ ${mail.html || ""}
                     extractJumpCSRegistered(
                       subject
                     );
-                
+
                 } else if (
                   mode === "ChangeEmail"
                 ) {
                   value =
                     extractChangeEmail(content);
-                
+
                 } else {
                   const OTP_SUBJECT =
                     "[ポケモンセンターオンライン]ログイン用パスコードのお知らせ";
-                
+
                   if (
                     String(subject || "")
                       .trim() === OTP_SUBJECT
@@ -1190,7 +1251,7 @@ ${mail.html || ""}
                       "SKIP OTP - WRONG SUBJECT:",
                       subject
                     );
-                
+
                     value = null;
                   }
                 }
@@ -1203,7 +1264,7 @@ ${mail.html || ""}
                     "FOUND:",
                     value
                   );
-                
+
                   if (
                     mode ===
                     "JumpCSRegistered"
@@ -1212,7 +1273,10 @@ ${mail.html || ""}
                     // không xóa mail hoàn tất.
                     return done(value);
                   }
-                
+
+                  // BandaiNamcoOTP cũng xóa mail
+                  // giống Pokemon sau khi lấy OTP.
+
                   imap.addFlags(
                     uid,
                     "\\Deleted",
@@ -1223,13 +1287,13 @@ ${mail.html || ""}
                           err.message || err
                         );
                       }
-                
+
                       imap.expunge(() => {
                         done(value);
                       });
                     }
                   );
-                
+
                   return;
                 }
               }

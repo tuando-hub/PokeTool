@@ -10,9 +10,13 @@ const ChangeEmail = require("./modes/changeemail");
 const Buy = require("./modes/autobuy");
 const BuyJumpPlus = require("./modes/buyjumpplus");
 const Session = require("./services/session");
+const BandaiNamcoCreate = require("./modes/bandainamco_create");
+const BandaiImap = require("./services/bandai_imap_manager");
+const BandaiPremiumCreate = require("./modes/bandaipremium_create");
 
 let STOP_FLAG = false;
 let START_TIME = 0;
+let PREMIUM_ADVANCING = false;
 
 const WORKER_CACHE_KEY = "PokeTool.V1.MaxWorkers";
 
@@ -102,6 +106,14 @@ async function runOneAccount(acc, index, total) {
   const mode = Core.getState().mode;
   const form = Core.getState().form;
 
+  if (mode === "BandaiPremium_Create") {
+    return await BandaiPremiumCreate.runAccount({ acc, index, total, form, stopCheck: checkStop });
+  }
+
+  if (mode === "BandaiNamco_Create") {
+    return await BandaiNamcoCreate.runAccount({ acc, index, total, form, stopCheck: checkStop });
+  }
+
   if (mode === "Lottery") {
     return await Lottery.runAccount({
       acc,
@@ -189,12 +201,8 @@ function validateBeforeRun() {
   if (!mode) {
     errors.push("Chưa chọn Mode");
   }
-  if (!imapEmail) {
-    errors.push("Thiếu IMAP EMAIL");
-  }
-  if (!imapPass) {
-    errors.push("Thiếu IMAP PASSWORD");
-  }
+  if (!imapEmail) errors.push("Thiếu IMAP EMAIL");
+  if (!imapPass) errors.push("Thiếu IMAP PASSWORD");
   if (!mailList) {
     errors.push("Thiếu MAIL LIST");
   }
@@ -288,6 +296,14 @@ function validateBeforeRun() {
       );
     }
   }
+  if (mode === "BandaiPremium_Create") {
+    for (const key of ["names", "kanas", "phones", "postcode", "address2"]) {
+      if (!String(f[key] || "").trim()) errors.push("Thiếu " + key.toUpperCase());
+    }
+  }
+  if (mode === "BandaiNamco_Create") {
+    if (!String(f.birthdate || "").trim()) errors.push("Thiếu BIRTHDATE");
+  }
   return errors;
 }
 
@@ -331,6 +347,15 @@ async function runAccountJob(acc, index, total) {
 async function run() {
   if (Core.getState().running) {
     Core.addLog("Runner already running", "warn");
+    return;
+  }
+
+  const selectedMode = Core.getState().mode;
+  if (/^Bandai(Namco_Lottery|Premium_Lottery)$/.test(selectedMode)) {
+    $ui.alert({
+      title: "Mode chưa có xử lý",
+      message: "Đã thêm giao diện và lựa chọn mode. Chức năng RUN cho " + selectedMode + " chưa được tích hợp; các mode cũ vẫn hoạt động bình thường."
+    });
     return;
   }
 
@@ -381,6 +406,134 @@ async function run() {
       return;
     }
 
+    // Bandai Namco uses API/IMAP, not WebView. Run exactly one wave of
+    // maxWorkers accounts at a time; rotate IP ONCE only after all jobs settle.
+    if (selectedMode === "BandaiNamco_Create") {
+      while (pending.length && !STOP_FLAG) {
+        const batch = pending.slice(0, maxWorkers);
+        const baseIndex = total - pending.length;
+        Core.addLog("[BandaiNamco] Start wave: " + batch.length + "/" + maxWorkers + " workers", "info");
+        const waveForm = Core.getState().form;
+        try {
+          await BandaiImap.startWave(waveForm.imapEmail, waveForm.imapPass, batch.map(a => a.email));
+          Core.addLog('[BandaiNamco] IMAP ready; start workers with legacy OTP lookup', 'success');
+        } catch (e) {
+          Core.addLog('[BandaiNamco] IMAP startup failed: '+String(e.message||e), 'error');
+          BandaiImap.endWave();
+          break;
+        }
+        const outcomes = await Promise.all(batch.map((acc, i) =>
+          runAccountJob(acc, baseIndex + i + 1, total)));
+        BandaiImap.endWave();
+        if (STOP_FLAG) break;
+        for (const outcome of outcomes) {
+          if (!outcome || outcome.stopped) continue;
+          const acc = outcome.acc;
+          if (outcome.error || (outcome.result && outcome.result.ok === false)) {
+            const reason = outcome.error ? String(outcome.error.message || outcome.error) :
+              String(outcome.result.reason || "UNKNOWN_ERROR");
+            pushFailed(acc, reason, {data:acc.data});
+            Core.addLog("Failed: " + acc.email + " / " + reason, "error");
+          } else {
+            pushDone(acc, outcome.result);
+            Core.addLog("Done: " + acc.email, "success");
+          }
+        }
+        pending = pending.filter(acc => !batch.includes(acc));
+        savePending(pending);
+        Core.refreshStats();
+        if (STOP_FLAG) break;
+        // Do not call cleanupAccount: BandaiNamco_Create uses no WV.
+        // Temporarily disable deferral so this actually runs the Shortcut.
+        Core.addLog("[BandaiNamco] Wave finished; Reset IP once", "warn");
+        Session.setDeferNetworkReset(false);
+        const resetOk = await Session.resetIP();
+        if (!resetOk) {
+          Core.addLog("[BandaiNamco] Reset IP failed; next wave blocked", "error");
+          break;
+        }
+        Session.setDeferNetworkReset(parallel);
+      }
+      Core.updateCurrent({step: STOP_FLAG ? "Stopped" : "Wave finished",
+        status: STOP_FLAG ? "Stopped" : "Finished", elapsed: elapsedText()});
+      return;
+    }
+
+    // Premium: run a whole worker-sized wave concurrently. All OTP WebViews
+    // stay alive until EVERY account in the wave has verified successfully.
+    // Clear the entire wave, then rotate IP ONCE, then start the next wave.
+    if (selectedMode === "BandaiPremium_Create") {
+      while (pending.length && !STOP_FLAG) {
+        const batch = pending.slice(0, maxWorkers);
+        const baseIndex = total - pending.length;
+        Core.addLog("[BandaiPremium] Start wave: " + batch.length + "/" + maxWorkers + " workers", "info");
+        const outcomes = await Promise.all(batch.map((acc, i) =>
+          runAccountJob(acc, baseIndex + i + 1, total)));
+        const otpTasks = [];
+        const webviews = [];
+        let waveFailed = false;
+        for (const outcome of outcomes) {
+          if (!outcome || outcome.stopped || STOP_FLAG) continue;
+          const acc = outcome.acc;
+          const result = outcome.result;
+          if (outcome.error || !result || !result.waitingSms) {
+            const reason = outcome.error ? String(outcome.error.message || outcome.error) :
+              String((result && result.reason) || "PREMIUM_UNEXPECTED_RESULT");
+            pushFailed(acc, reason, {data:acc.data});
+            Core.addLog("Failed: " + acc.email + " / " + reason, "error");
+            waveFailed = true;
+            continue;
+          }
+          webviews.push(result.webview);
+          Core.addLog("Waiting SMS OTP: " + acc.email, "warn");
+          otpTasks.push(new Promise(resolve => {
+            let settled = false;
+            const finish = ok => { if (!settled) { settled = true; resolve(ok); } };
+            BandaiPremiumCreate.watchOtp(result.webview, acc, async doneAcc => {
+              if (STOP_FLAG) { finish(false); return; }
+              pushDone(doneAcc, {mode:"BandaiPremium_Create",verified:true});
+              Core.addLog("Premium registration completed: " + doneAcc.email, "success");
+              Core.refreshStats();
+              finish(true);
+            }, result.smsInfo);
+            // STOP must release the wave even when an OTP was never entered.
+            (async () => {
+              while (!settled && !STOP_FLAG) await Web.delay(250);
+              if (STOP_FLAG) finish(false);
+            })();
+          }));
+        }
+        const otpResults = await Promise.all(otpTasks);
+        if (STOP_FLAG) break;
+        if (otpResults.some(ok => !ok)) {
+          Core.addLog("[BandaiPremium] OTP watcher interrupted; wave stopped", "error");
+          break;
+        }
+        // All accounts in this wave have finished or failed; never clear a
+        // still-pending OTP session or reset network while it is in use.
+        Core.addLog("[BandaiPremium] Wave finished; Clear Full " + webviews.length + " WebView(s)", "warn");
+        for (const wv of webviews) {
+          try { await Session.cleanupAccount(wv, 0, 0, {logout:false,resetIP:false}); }
+          catch (e) { Core.addLog("Premium cleanup: " + String(e.message || e), "error"); waveFailed = true; }
+        }
+        pending = pending.filter(acc => !batch.includes(acc));
+        savePending(pending);
+        Core.refreshStats();
+        if (STOP_FLAG) break;
+        Core.addLog("[BandaiPremium] Reset IP once after entire wave", "warn");
+        Session.setDeferNetworkReset(false);
+        const resetOk = await Session.resetIP();
+        if (!resetOk) {
+          Core.addLog("[BandaiPremium] Reset IP failed; next wave blocked", "error");
+          break;
+        }
+        Session.setDeferNetworkReset(parallel);
+        if (waveFailed) Core.addLog("[BandaiPremium] Wave had failed accounts; see Fail list", "warn");
+      }
+      Core.updateCurrent({step:STOP_FLAG?"Stopped":"Wave finished",status:STOP_FLAG?"Stopped":"Finished",elapsed:elapsedText()});
+      return;
+    }
+
     while (pending.length > 0) {
       if (STOP_FLAG) {
         Core.addLog("Runner stopped by user", "warn");
@@ -399,6 +552,7 @@ async function run() {
 
       const outcomes = await Promise.all(jobs);
       let changed = false;
+      let pauseForSms = false;
 
       for (const outcome of outcomes) {
         if (!outcome || outcome.stopped) {
@@ -430,7 +584,54 @@ async function run() {
 
         const result = outcome.result;
 
-        if (result && result.ok === false) {
+        if (result && result.waitingSms) {
+          const waiting = Core.loadJSON('bandai_premium_waiting_sms.json', []);
+          waiting.push({email:acc.email, status:'Waiting SMS OTP', at:Date.now()});
+          Core.saveJSON('bandai_premium_waiting_sms.json', waiting);
+          Core.addLog('Waiting SMS OTP: ' + acc.email + ' / auto-submit after 6 digits; batch paused.', 'warn');
+          if (selectedMode === 'BandaiPremium_Create') {
+            BandaiPremiumCreate.watchOtp(result.webview, acc, async function(doneAcc) {
+              const list=Core.loadJSON('bandai_premium_waiting_sms.json', []);
+              Core.saveJSON('bandai_premium_waiting_sms.json', list.filter(x=>x.email!==doneAcc.email));
+              pushDone(doneAcc, {mode:'BandaiPremium_Create',verified:true});
+              Core.addLog('Premium registration completed: '+doneAcc.email, 'success');
+              Core.refreshStats();
+              // Serialize cleanup + network rotation + next account. Do not
+              // start the next WebView until the previous one is fully cleared.
+              if (PREMIUM_ADVANCING || STOP_FLAG) return;
+              PREMIUM_ADVANCING = true;
+              try {
+                Core.updateCurrent({email:doneAcc.email,step:'Cleanup',status:'Clearing session'});
+                Core.addLog('[BandaiPremium] Clear full after verified account', 'warn');
+                await Session.cleanupAccount(result.webview, 0, 0, {logout:false,resetIP:false});
+                if (STOP_FLAG) return;
+                Core.updateCurrent({email:doneAcc.email,step:'Reset IP',status:'Airplane mode'});
+                Core.addLog('[BandaiPremium] Reset IP: bật/tắt máy bay qua Shortcut Reset IP', 'warn');
+                const resetOk = await Session.resetIP();
+                if (!resetOk) {
+                  Core.addLog('[BandaiPremium] Reset IP failed; không chạy account tiếp', 'error');
+                  return;
+                }
+                if (STOP_FLAG) return;
+                // The original batch may still be finishing its finally block.
+                while (Core.getState().running && !STOP_FLAG) await Web.delay(200);
+                if (STOP_FLAG) return;
+                if (getPending().length) {
+                  Core.addLog('[BandaiPremium] Cleanup + Reset IP xong; chạy account tiếp', 'success');
+                  await run();
+                } else {
+                  Core.updateCurrent({email:doneAcc.email,step:'Done',status:'Finished'});
+                  Core.addLog('[BandaiPremium] Hoàn tất toàn bộ danh sách', 'success');
+                }
+              } catch (e) {
+                Core.addLog('[BandaiPremium] Post-success cleanup failed: '+String(e.message||e), 'error');
+              } finally {
+                PREMIUM_ADVANCING = false;
+              }
+            });
+          }
+          if (selectedMode === 'BandaiPremium_Create') pauseForSms = true;
+        } else if (result && result.ok === false) {
           pushFailed(acc, result.reason || "UNKNOWN_ERROR", result);
 
           Core.addLog(
@@ -449,6 +650,11 @@ async function run() {
 
       Core.refreshStats();
 
+      if (pauseForSms) {
+        Core.addLog("Premium paused at SMS OTP; pending accounts will not auto-run", "warn");
+        break;
+      }
+
       if (parallel) {
         try {
           await Session.flushDeferredReset();
@@ -461,12 +667,19 @@ async function run() {
       }
     }
 
-    Core.updateCurrent({
-      email: "-",
-      step: "Idle",
-      status: STOP_FLAG ? "Stopped" : "Finished",
-      elapsed: elapsedText()
-    });
+    if ((Core.getState().mode === "BandaiNamco_Create" || Core.getState().mode === "BandaiPremium_Create") && !STOP_FLAG) {
+      Core.updateCurrent({
+        status: Core.getState().mode === "BandaiPremium_Create" ? "Waiting SMS OTP" : "Finished",
+        elapsed: elapsedText()
+      });
+    } else {
+      Core.updateCurrent({
+        email: "-",
+        step: "Idle",
+        status: STOP_FLAG ? "Stopped" : "Finished",
+        elapsed: elapsedText()
+      });
+    }
   } catch (error) {
     Core.addLog("Runner fatal: " + (error.message || error), "error");
     $ui.alert(String(error.message || error));
@@ -493,13 +706,32 @@ async function run() {
     Core.refreshStats();
 
     if (!STOP_FLAG) {
-      Core.addLog("Runner finished", "info");
+      Core.addLog("Runner paused/finished", "info");
     }
   }
 }
 
+async function nextAccount() {
+  if (Core.getState().mode !== "BandaiPremium_Create") {
+    $ui.toast("NEXT ACC chỉ dành cho Premium Create");
+    return;
+  }
+  if (Core.getState().running) {
+    $ui.toast("Đang chạy, hãy chờ");
+    return;
+  }
+  const pending = getPending();
+  if (!pending.length) {
+    $ui.toast("Không còn account đang chờ");
+    return;
+  }
+  Core.addLog("NEXT ACC: " + pending[0].email, "info");
+  await run();
+}
+
 function stop() {
   STOP_FLAG = true;
+  BandaiPremiumCreate.cancelOtpWatchers();
   Core.setRunning(false);
   Core.addLog("Stop requested", "warn");
 

@@ -32,7 +32,9 @@ const MODES = [
   "ChangeProfile",
   "ChangeEmail",
   "CheckResult",
-  "ChangeProfileOrder"
+  "ChangeProfileOrder",
+  "BandaiNamco",
+  "BandaiPremium"
 ];
 
 const TABS = ["Dashboard", "Data", "Browser", "Queue", "Result", "Settings"];
@@ -64,6 +66,9 @@ let state = {
   },
 
   form: {
+    premiumSmsEnabled: "0",
+    premiumSmsId: "",
+    premiumSmsPass: "",
     imapEmail: "",
     imapPass: "",
     buyQty: "1",
@@ -87,6 +92,10 @@ let state = {
 };
 
 const MODE_FIELDS = {
+  "BandaiNamco_Create": ["mailList", "birthdate"],
+  "BandaiNamco_Lottery": ["mailList", "productIds"],
+  "BandaiPremium_Create": ["mailList", "names", "kanas", "phones", "postcode", "address2"],
+  "BandaiPremium_Lottery": ["mailList", "productIds"],
   Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [
@@ -554,6 +563,9 @@ function resetAll() {
   deleteFile(FILE_META);
 
   state.form = {
+    premiumSmsEnabled: "0",
+    premiumSmsId: "",
+    premiumSmsPass: "",
     imapEmail: "",
     imapPass: "",
     buyQty: "1",

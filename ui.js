@@ -207,6 +207,10 @@ function blurAllInputs() {
 // ============================================================
 
 function modeTitle(mode) {
+  if (mode === "BandaiNamco_Create") return "🆔 BandaiNamco / Create Account";
+  if (mode === "BandaiNamco_Lottery") return "🆔 BandaiNamco / Lottery";
+  if (mode === "BandaiPremium_Create") return "🎟 BandaiPremium / Create Account";
+  if (mode === "BandaiPremium_Lottery") return "🎟 BandaiPremium / Lottery";
   if (mode === "Lottery") return "🎯 Lottery";
   if (mode === "Buy") return "🛒 Buy";
   if (mode === "BuyJumpPlus") return "🛍 Buy Jump+";
@@ -221,6 +225,8 @@ function modeTitle(mode) {
 
 function modeMeta(mode) {
   const map = {
+    BandaiNamco: ["🆔", "BandaiNamco", "Create Account / Lottery"],
+    BandaiPremium: ["🎟", "BandaiPremium", "Create Account / Lottery"],
     Lottery: ["🎯", "Lottery", "応募・抽選"],
 
     Buy: ["🛒", "Buy", "購入"],
@@ -636,7 +642,7 @@ function renderCurrentTab() {
 
       pageView = dashboardPage();
 
-      height = 660;
+      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 950 : 730;
       break;
 
     case "Data":
@@ -672,7 +678,7 @@ function dashboardPage() {
   return page(
     "dashboardPage",
 
-    730,
+    900,
 
     [
       headerCard(12),
@@ -685,7 +691,9 @@ function dashboardPage() {
 
       workerCard(560),
 
-      runCard(638)
+      ...(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? [premiumSmsHomeFields(630)] : []),
+
+      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 810 : 638)
     ]
   );
 }
@@ -1320,26 +1328,50 @@ function workerCard(top) {
 
       {
         type: "label",
-
         props: {
-          text: "1 - 10",
-
+          text: Core.getState().mode === "BandaiPremium_Create" ? "SMS API" : "1 - 10",
           align: $align.right,
-
           textColor: $color(UI.MUTED),
-
-          font: $font(11)
+          font: $font("bold", 11)
         },
-
         layout: make => {
-          make.right.inset(14);
+          make.right.inset(Core.getState().mode === "BandaiPremium_Create" ? 62 : 14);
           make.centerY.equalTo();
-          make.width.equalTo(70);
+          make.width.equalTo(Core.getState().mode === "BandaiPremium_Create" ? 64 : 70);
           make.height.equalTo(30);
         }
-      }
+      },
+      ...(Core.getState().mode === "BandaiPremium_Create" ? [{
+        type: "switch",
+        props: {
+          id: "premiumSmsToggle",
+          on: String((Core.getState().form || {}).premiumSmsEnabled) === "1",
+          onColor: $color(UI.RUN)
+        },
+        layout: make => {
+          make.right.inset(10);
+          make.centerY.equalTo();
+        },
+        events: {
+          changed(sender) {
+            // Save any visible inputs before replacing Dashboard.
+            syncFormToCore();
+            Core.updateForm("premiumSmsEnabled", sender.on ? "1" : "0");
+            lastTab = null;
+            renderCurrentTab();
+          }
+        }
+      }] : [])
     ]
   };
+}
+
+function premiumSmsHomeFields(top) {
+  return card("premiumSmsHomeFields", top, 170, [
+    titleLabel("SMS API CREDENTIALS", 16, 12),
+    field("premiumSmsId", "SMS API ID", "API username", 12, false),
+    field("premiumSmsPass", "SMS API PASS", "API password", 82, true)
+  ]);
 }
 
 function runCard(top) {
@@ -1580,6 +1612,7 @@ function dataPageHeight() {
   let top = 128;
 
   top += 416;
+
 
   if (sec.product) {
     top += 216;
@@ -2437,6 +2470,25 @@ function showModeMenu() {
             events: {
               tapped(sender) {
                 pressFeedback(sender, () => {
+                  if (mode === "BandaiNamco" || mode === "BandaiPremium") {
+                    $ui.menu({
+                      items: ["Create Account", "Lottery"],
+                      handler: (title, idx) => {
+                        if (idx !== 0 && idx !== 1) return;
+                        const selectedMode = mode + (idx === 0 ? "_Create" : "_Lottery");
+                        Core.setMode(selectedMode);
+                        queueDirty = true;
+                        resultDirty = true;
+                        dashboardDirty = true;
+                        tabsDirty = true;
+                        Core.addLog("Mode changed: " + selectedMode, "info");
+                        $ui.pop();
+                        lastTab = null;
+                        renderCurrentTab();
+                      }
+                    });
+                    return;
+                  }
                   Core.setMode(mode);
 
                   queueDirty = true;
@@ -3042,6 +3094,8 @@ function getModeSections(mode) {
     account: true,
 
     product:
+      mode === "BandaiNamco_Lottery" ||
+      mode === "BandaiPremium_Lottery" ||
       mode === "Lottery" ||
       mode === "Buy" ||
       mode === "CheckResult" ||
@@ -3049,6 +3103,8 @@ function getModeSections(mode) {
       mode === "ChangeProfileOrder",
 
     profile:
+      mode === "BandaiNamco_Create" ||
+      mode === "BandaiPremium_Create" ||
       mode === "Create" ||
       mode === "ChangeProfile" ||
       mode === "BuyJumpPlus" ||
