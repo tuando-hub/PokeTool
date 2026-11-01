@@ -39,7 +39,7 @@ async function fill(wv, fields, stopCheck) {
 }
 // Monitor the user-entered OTP in the same live WebView. A code is submitted
 // only once per distinct input cycle; clearing/retyping permits another try.
-function watchOtp(wv, acc, onSuccess, smsInfo) {
+function watchOtp(wv, acc, onSuccess, smsInfo, onFailure) {
   const token = {cancelled:false};
   ACTIVE_OTP.add(token);
   (async () => {
@@ -53,8 +53,12 @@ function watchOtp(wv, acc, onSuccess, smsInfo) {
           const otp = await SmsApi.waitOtp(smsInfo.pkey, smsInfo.phone, () => {
             if (token.cancelled || wv._destroyed) throw new Error('SMS_WATCH_CANCELLED');
           });
-          if (!otp || token.cancelled || wv._destroyed) {
-            log('SMS API: không nhận được OTP', 'warn'); return;
+          if (token.cancelled || wv._destroyed) return;
+          if (!otp) {
+            log('SMS API: quá 5 phút chưa có OTP; đã yêu cầu cancel số', 'error');
+            token.cancelled = true;
+            if (onFailure) await onFailure(acc, 'PREMIUM_EXT_OTP_TIMEOUT_CANCELLED');
+            return;
           }
           await until(wv, 'return document.querySelector("#code")?"YES":"NO"', () => {
             if (token.cancelled || wv._destroyed) throw new Error('SMS_WATCH_CANCELLED');
@@ -62,7 +66,14 @@ function watchOtp(wv, acc, onSuccess, smsInfo) {
           const injected = await js(wv, 'var e=document.querySelector("input#code");if(!e)return "MISSING";e.value='+JSON.stringify(otp)+';e.dispatchEvent(new Event("input",{bubbles:true}));e.dispatchEvent(new Event("change",{bubbles:true}));return "OK";');
           if (injected === 'OK') log('SMS API: đã nhập OTP vào 確認コード, chờ nút 送信する tự gửi', 'success');
           else log('SMS API: không thể nhập OTP: '+injected, 'error');
-        } catch(e) { if (!token.cancelled) log('SMS API: '+String(e.message||e), 'error'); }
+        } catch(e) {
+          if (!token.cancelled) {
+            const reason = String(e.message || e);
+            log('SMS API: '+reason, 'error');
+            token.cancelled = true;
+            if (onFailure) await onFailure(acc, reason);
+          }
+        }
       })();
     }
     try {
@@ -79,6 +90,7 @@ function watchOtp(wv, acc, onSuccess, smsInfo) {
           return 'OTP:'+JSON.stringify({value:c.value,disabled:!!(b&&b.disabled),button:!!b});
         `);
         if (state === 'SUCCESS') {
+          token.cancelled = true;
           log('Đã xác nhận trang ご登録ありがとうございます！', 'success');
           Core.updateCurrent({email:acc.email,step:'8/8 · Hoàn thành',status:'Done'});
           await onSuccess(acc);

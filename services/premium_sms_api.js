@@ -2,7 +2,7 @@
 // Only this module is changed; keep the existing UI and mode interface.
 const API_BASE = 'https://gsmcloudjpn.online/api/ext';
 const POLL_MS = 4000;
-const OTP_TIMEOUT = 10 * 60 * 1000;
+const OTP_TIMEOUT = 5 * 60 * 1000;
 let serviceId = '';
 let smsServer = 2;
 let apiKey = '';
@@ -115,7 +115,7 @@ async function waitOtp(pkey, phone, stopCheck) {
   pkey = String(pkey || '').trim();
   if (!pkey) throw new Error('PREMIUM_EXT_PKEY_REQUIRED');
   const start = Date.now();
-  const timeout = OTP_TIMEOUT; // Both servers: max 10 minutes for OTP
+  const timeout = OTP_TIMEOUT; // Both servers: max 5 minutes for OTP
   while (Date.now() - start < timeout) {
     stop(stopCheck);
     const d = await pollOnce(pkey,stopCheck);
@@ -126,6 +126,16 @@ async function waitOtp(pkey, phone, stopCheck) {
       return otp;
     }
     await sleep(POLL_MS);
+  }
+  // OTP deadline reached: cancel the SAME order by its PKEY.
+  // Do not report cancellation as successful unless the API confirms it.
+  console.log('[PREMIUM EXT SMS] OTP timeout after 5 minutes; cancelling order');
+  try {
+    const cancellation = await cancel(pkey,stopCheck);
+    console.log('[PREMIUM EXT SMS] OTP timeout: cancel API confirmed success');
+  } catch (e) {
+    console.log('[PREMIUM EXT SMS] OTP timeout: cancel FAILED: ' + String(e && e.message || e));
+    throw new Error('PREMIUM_EXT_OTP_TIMEOUT_CANCEL_FAILED_' + String(e && e.message || e));
   }
   return null;
 }

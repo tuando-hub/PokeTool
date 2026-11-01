@@ -528,7 +528,14 @@ async function run() {
               Core.addLog("Premium registration completed: " + doneAcc.email, "success");
               Core.refreshStats();
               finish(true);
-            }, result.smsInfo);
+            }, result.smsInfo, async (failedAcc, reason) => {
+              if (STOP_FLAG) { finish(false); return; }
+              pushFailed(failedAcc, reason, {data:failedAcc.data});
+              Core.addLog('Premium OTP failed: ' + failedAcc.email + ' / ' + reason, 'error');
+              Core.refreshStats();
+              waveFailed = true;
+              finish(true); // Settled failure: continue wave and next accounts.
+            });
             // STOP must release the wave even when an OTP was never entered.
             (async () => {
               while (!settled && !STOP_FLAG) await Web.delay(250);
