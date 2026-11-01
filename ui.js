@@ -642,7 +642,7 @@ function renderCurrentTab() {
 
       pageView = dashboardPage();
 
-      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 950 : 730;
+      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 1130 : 730;
       break;
 
     case "Data":
@@ -675,10 +675,12 @@ function renderCurrentTab() {
 // ============================================================
 
 function dashboardPage() {
+  const expanded = Core.getState().mode === "BandaiPremium_Create" &&
+    String((Core.getState().form || {}).premiumSmsEnabled) === "1";
   return page(
     "dashboardPage",
 
-    900,
+    expanded ? 1130 : 900,
 
     [
       headerCard(12),
@@ -693,7 +695,7 @@ function dashboardPage() {
 
       ...(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? [premiumSmsHomeFields(630)] : []),
 
-      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 810 : 638)
+      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 915 : 638)
     ]
   );
 }
@@ -1367,10 +1369,11 @@ function workerCard(top) {
 }
 
 function premiumSmsHomeFields(top) {
-  return card("premiumSmsHomeFields", top, 170, [
-    titleLabel("SMS API CREDENTIALS", 16, 12),
-    field("premiumSmsId", "SMS API ID", "API username", 12, false),
-    field("premiumSmsPass", "SMS API PASS", "API password", 82, true)
+  return card("premiumSmsHomeFields", top, 270, [
+    titleLabel("NORTHDINH SMS API", 16, 12),
+    field("premiumSmsApiKey", "API KEY", "Nhập NorthDinh API key", 12, true),
+    field("premiumSmsServiceId", "SERVICE ID", "8", 88, false),
+    field("premiumSmsServer", "SERVER (1 hoặc 2)", "2", 164, false)
   ]);
 }
 

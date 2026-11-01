@@ -1,999 +1,161 @@
-// ======================================================
-// OTP NORTH
-// ======================================================
-
-const API_BASE =
-  "https://gsmcloudjpn.online/api";
-
-let API_USERNAME = "";
-
-let API_PASSWORD = "";
-
-const POLL_INTERVAL =
-  3000;
-
-const POLL_TIMEOUT =
-  5 * 60 * 1000;
-
-const HISTORY_LIMIT =
-  5;
-
-const ORDER_MAX_RETRY =
-  3;
-
-// Cache riêng cho từng username
-const TOKEN_CACHE_KEY = "premium_gsmcloud_token_v1";
-
-// ======================================================
-// TOKEN
-// ======================================================
-
-let accessToken =
-  $cache.get(
-    TOKEN_CACHE_KEY
-  ) || "";
-
-// Xóa cache cũ từng dùng chung
-$cache.remove(
-  "north_token"
-);
-
-// ======================================================
-// UTILS
-// ======================================================
-
-function checkStop(fn) {
-  if (
-    typeof fn === "function"
-  ) {
-    fn();
-  }
-}
-
-function delay(ms) {
-  return new Promise(resolve => {
-    $delay(
-      ms / 1000,
-      resolve
-    );
-  });
-}
-
-function getStatusCode(res) {
-  try {
-    return Number(
-      res.response.statusCode
-    );
-  } catch (_) {
-    return 0;
-  }
-}
-
-function normalizePhone(value) {
-  return String(
-    value || ""
-  )
-    .replace(/\D/g, "")
-    .trim();
-}
-
-function extractOtp(item) {
-  if (!item) {
-    return "";
-  }
-
-  const otp =
-    String(
-      item.otp || ""
-    ).trim();
-
-  if (
-    /^\d{6}$/.test(otp)
-  ) {
-    return otp;
-  }
-
-  const sms =
-    String(
-      item.sms || ""
-    );
-
-  const match =
-    sms.match(
-      /(?:^|\D)(\d{6})(?:\D|$)/
-    );
-
-  return match
-    ? match[1]
-    : "";
-}
-
-function requestHeaders() {
-  return {
-    Accept: "*/*",
-    "Cache-Control":
-      "no-cache",
-    Pragma:
-      "no-cache"
-  };
-}
-
-// ======================================================
-// RESET TOKEN
-// ======================================================
-
-function resetToken() {
-  accessToken = "";
-
-  $cache.remove(
-    TOKEN_CACHE_KEY
-  );
-}
-
-// ======================================================
-// LOGIN
-// ======================================================
-
-async function login(
-  stopCheck,
-  force = false
-) {
-  checkStop(stopCheck);
-
-  if (
-    accessToken &&
-    !force
-  ) {
-    return accessToken;
-  }
-
-  if (force) {
-    resetToken();
-  }
-
-  const url = API_BASE + "/login";
-
-  const res = await $http.post({
-    url,
-    timeout: 20,
-    header: {
-      ...requestHeaders(),
-      "Content-Type": "application/json",
-      "Origin": "https://gsmcloudjpn.online",
-      "Referer": "https://gsmcloudjpn.online/"
-    },
-    body: {
-      username: API_USERNAME,
-      password: API_PASSWORD
-    }
-  });
-
-  const data =
-    res.data;
-
-  if (
-    getStatusCode(res) !== 200 ||
-    !data ||
-    data.status !== "success"
-  ) {
-    throw new Error(
-      "OTPNORTH_LOGIN_FAILED"
-    );
-  }
-
-  accessToken =
-    String(
-      data.token ||
-      (
-        data.data &&
-        data.data.token
-      ) ||
-      ""
-    ).trim();
-
-  if (!accessToken) {
-    throw new Error(
-      "OTPNORTH_NO_TOKEN"
-    );
-  }
-
-  $cache.set(
-    TOKEN_CACHE_KEY,
-    accessToken
-  );
-
-  console.log(
-    "[OTPNORTH] LOGIN OK:",
-    API_USERNAME
-  );
-
-  return accessToken;
-}
-
-// ======================================================
-// GET HISTORY
-// ======================================================
-
-async function getHistory(
-  stopCheck,
-  retry = true
-) {
-  checkStop(stopCheck);
-
-  try {
-    const token =
-      await login(
-        stopCheck
-      );
-
-    const url =
-      API_BASE +
-      "/getHistory" +
-      "?token=" +
-      encodeURIComponent(
-        token
-      ) +
-      "&t=" +
-      Date.now();
-
-    const res =
-      await $http.get({
-        url,
-        timeout: 20,
-        header:
-          requestHeaders()
-      });
-
-    const data =
-      res.data;
-
-    if (
-      getStatusCode(res) !== 200 ||
-      !data ||
-      data.status !== "success"
-    ) {
-      throw new Error(
-        "OTPNORTH_HISTORY_RESPONSE_FAILED"
-      );
-    }
-
-    return Array.isArray(
-      data.history
-    )
-      ? data.history
-      : [];
-
-  } catch (error) {
-    if (retry) {
-      console.log(
-        "[OTPNORTH] HISTORY RETRY"
-      );
-
-      resetToken();
-
-      await login(
-        stopCheck,
-        true
-      );
-
-      return getHistory(
-        stopCheck,
-        false
-      );
-    }
-
-    throw new Error(
-      "OTPNORTH_HISTORY_FAILED_" +
-      String(
-        error &&
-        error.message
-          ? error.message
-          : error
-      )
-    );
-  }
-}
-
-// ======================================================
-// ORDER — RETRY TỐI ĐA 3 LẦN
-// ======================================================
-
-async function order(
-  stopCheck,
-  maxRetry = ORDER_MAX_RETRY
-) {
-  let lastError = null;
-
-  for (
-    let attempt = 1;
-    attempt <= maxRetry;
-    attempt++
-  ) {
-    checkStop(stopCheck);
-
-    try {
-      if (attempt > 1) {
-        resetToken();
-
-        await login(
-          stopCheck,
-          true
-        );
-      }
-
-      const token =
-        await login(
-          stopCheck
-        );
-
-      const url =
-        API_BASE +
-        "/order" +
-        "?token=" +
-        encodeURIComponent(
-          token
-        ) +
-        "&serviceId=8" +
-        "&khoType=yma" +
-        "&t=" +
-        Date.now();
-
-      console.log(
-        "[OTPNORTH] ORDER " +
-        attempt +
-        "/" +
-        maxRetry
-      );
-
-      const res =
-        await $http.get({
-          url,
-          timeout: 20,
-          header:
-            requestHeaders()
-        });
-
-      const data =
-        res.data;
-
-      if (
-        getStatusCode(res) === 200 &&
-        data &&
-        data.status === "success"
-      ) {
-        console.log(
-          "[OTPNORTH] ORDER OK"
-        );
-
-        return data;
-      }
-
-      throw new Error(
-        "ORDER_RESPONSE_FAILED_" +
-        getStatusCode(res)
-      );
-
-    } catch (error) {
-      lastError = error;
-
-      console.log(
-        "[OTPNORTH] ORDER ERROR:",
-        String(
-          error &&
-          error.message
-            ? error.message
-            : error
-        )
-      );
-
-      resetToken();
-
-      if (
-        attempt < maxRetry
-      ) {
-        console.log(
-          "[OTPNORTH] RETRY SAU 3 GIÂY"
-        );
-
-        await delay(
-          POLL_INTERVAL
-        );
-      }
-    }
-  }
-
-  throw new Error(
-    "OTPNORTH_ORDER_FAILED_AFTER_" +
-    maxRetry +
-    "_RETRIES_" +
-    String(
-      lastError &&
-      lastError.message
-        ? lastError.message
-        : lastError ||
-          "UNKNOWN"
-    )
-  );
-}
-
-// ======================================================
-// WAIT PHONE
-// ======================================================
-
-async function waitPending(
-  stopCheck
-) {
-  const started =
-    Date.now();
-
-  let attempt = 0;
-
-  while (
-    Date.now() - started <
-    POLL_TIMEOUT
-  ) {
-    checkStop(stopCheck);
-
-    attempt++;
-
-    console.log(
-      "[OTPNORTH] CHECK PHONE:",
-      attempt
-    );
-
-    const history =
-      await getHistory(
-        stopCheck
-      );
-
-    const firstItems =
-      history.slice(
-        0,
-        HISTORY_LIMIT
-      );
-
-    const item =
-      firstItems.find(row => {
-        if (!row) {
-          return false;
-        }
-
-        const status =
-          String(
-            row.trangThai || ""
-          ).trim();
-
-        const rawPhone =
-          String(
-            row.sdt || ""
-          ).trim();
-
-        return (
-          status ===
-            "Đang chờ SMS..." &&
-          rawPhone &&
-          rawPhone !==
-            "Đang xin số..."
-        );
-      });
-
-    if (item) {
-      const phone =
-        normalizePhone(
-          item.sdt
-        );
-
-      if (phone) {
-        console.log(
-          "[OTPNORTH] FOUND PHONE:",
-          phone
-        );
-
-        return {
-          phone,
-          sdt: phone,
-
-          pkey:
-            String(
-              item.pkey || ""
-            ),
-
-          item
-        };
-      }
-    }
-
-    const requesting =
-      firstItems.find(row => {
-        return (
-          row &&
-          String(
-            row.trangThai || ""
-          ).trim() ===
-            "Đang chờ SMS..."
-        );
-      });
-
-    if (requesting) {
-      console.log(
-        "[OTPNORTH] WAIT SERVER:",
-        String(
-          requesting.sdt || ""
-        )
-      );
-    } else {
-      console.log(
-        "[OTPNORTH] ORDER CHƯA XUẤT HIỆN"
-      );
-    }
-
-    await delay(
-      POLL_INTERVAL
-    );
-  }
-
-  return null;
-}
-
-// ======================================================
-// WAIT OTP
-// ======================================================
-
-async function waitOtp(
-  pkey,
-  phone,
-  stopCheck
-) {
-  const started =
-    Date.now();
-
-  const targetPhone =
-    normalizePhone(
-      phone
-    );
-
-  let attempt = 0;
-
-  while (
-    Date.now() - started <
-    POLL_TIMEOUT
-  ) {
-    checkStop(stopCheck);
-
-    attempt++;
-
-    console.log(
-      "[OTPNORTH] CHECK OTP:",
-      attempt
-    );
-
-    const history =
-      await getHistory(
-        stopCheck
-      );
-
-    let item = null;
-
-    if (pkey) {
-      item =
-        history.find(row => {
-          return (
-            row &&
-            String(
-              row.pkey || ""
-            ) ===
-              String(pkey)
-          );
-        });
-    }
-
-    if (!item) {
-      item =
-        history.find(row => {
-          return (
-            row &&
-            normalizePhone(
-              row.sdt
-            ) === targetPhone
-          );
-        });
-    }
-
-    if (item) {
-      const otp =
-        extractOtp(
-          item
-        );
-
-      if (otp) {
-        console.log(
-          "[OTPNORTH] FOUND OTP:",
-          otp
-        );
-
-        return otp;
-      }
-
-      const status =
-        String(
-          item.trangThai || ""
-        ).trim();
-
-      if (
-        status === "Đã hủy" ||
-        status === "Hết hạn"
-      ) {
-        throw new Error(
-          "OTPNORTH_" +
-          status
-        );
-      }
-    }
-
-    await delay(
-      POLL_INTERVAL
-    );
-  }
-
-  return null;
-}
-
-// ======================================================
-// ORDER + GET PHONE
-// ======================================================
-
-async function orderPhone(
-  stopCheck
-) {
-  checkStop(stopCheck);
-
-  console.log(
-    "[OTPNORTH] START ORDER PHONE"
-  );
-
-  await order(
-    stopCheck
-  );
-
-  console.log(
-    "[OTPNORTH] ORDER DONE"
-  );
-
-  await delay(
-    POLL_INTERVAL
-  );
-
-  console.log(
-    "[OTPNORTH] START WAIT PHONE"
-  );
-
-  const pending =
-    await waitPending(
-      stopCheck
-    );
-
-  if (
-    !pending ||
-    !pending.phone
-  ) {
-    throw new Error(
-      "OTPNORTH_NO_PHONE"
-    );
-  }
-
-  console.log(
-    "[OTPNORTH] PHONE READY:",
-    pending.phone
-  );
-
-  return {
-    phone:
-      pending.phone,
-
-    pkey:
-      String(
-        pending.pkey || ""
-      )
-  };
-}
-
-// ======================================================
-// ORDER + GET PHONE + OTP
-// ======================================================
-
-async function getPhoneAndOtp(
-  stopCheck
-) {
-  const phoneInfo =
-    await orderPhone(
-      stopCheck
-    );
-
-  const otp =
-    await waitOtp(
-      phoneInfo.pkey,
-      phoneInfo.phone,
-      stopCheck
-    );
-
-  if (!otp) {
-    throw new Error(
-      "OTPNORTH_OTP_TIMEOUT"
-    );
-  }
-
-  return {
-    phone:
-      phoneInfo.phone,
-
-    otp,
-
-    pkey:
-      phoneInfo.pkey
-  };
-}
-
-async function getSms2(
-  pkey,
-  stopCheck,
-  retry = true
-) {
-  checkStop(stopCheck);
-
-  const targetPkey =
-    String(pkey || "")
-      .trim();
-
-  if (!targetPkey) {
-    throw new Error(
-      "OTPNORTH_SMS2_PKEY_EMPTY"
-    );
-  }
-
-  try {
-    const token =
-      await login(stopCheck);
-
-    const url =
-      API_BASE +
-      "/getSms2" +
-      "?token=" +
-      encodeURIComponent(token) +
-      "&pkey=" +
-      encodeURIComponent(
-        targetPkey
-      ) +
-      "&t=" +
-      Date.now();
-
-    const res =
-      await $http.get({
-        url,
-        timeout: 20,
-        header:
-          requestHeaders()
-      });
-
-    const data =
-      res.data;
-
-    if (
-      getStatusCode(res) !== 200 ||
-      !data ||
-      data.status !== "success"
-    ) {
-      throw new Error(
-        "GET_SMS2_FAILED"
-      );
-    }
-
-    console.log(
-      "[OTPNORTH] GET SMS2 OK"
-    );
-
-    return true;
-
-  } catch (error) {
-    if (retry) {
-      resetToken();
-
-      await login(
-        stopCheck,
-        true
-      );
-
-      return getSms2(
-        pkey,
-        stopCheck,
-        false
-      );
-    }
-
-    throw new Error(
-      "OTPNORTH_GET_SMS2_FAILED_" +
-      String(
-        error &&
-        error.message
-          ? error.message
-          : error
-      )
-    );
-  }
-}
-
-async function waitOtpSms2(
-  pkey,
-  stopCheck
-) {
-  await getSms2(
-    pkey,
-    stopCheck
-  );
-
-  return await waitOtp(
-    pkey,
-    "",
-    stopCheck
-  );
-}
-
-async function waitSms2(
-  stopCheck
-) {
-
-  const pkey =
-    String(
-      $cache.get(
-        "north_sms2_pkey"
-      ) || ""
-    );
-
-  const otp1 =
-    String(
-      $cache.get(
-        "north_sms1_otp"
-      ) || ""
-    );
-
-  if (!pkey) {
-    throw new Error(
-      "SMS2_NO_PKEY"
-    );
-  }
-
-  const start =
-    Date.now();
-
-  //
-  // đợi getSms2 success
-  //
-
-  while (
-    Date.now() - start <
-    2 * 60 * 1000
-  ) {
-
-    checkStop(stopCheck);
-
-    try {
-
-      const ok =
-        await getSms2(
-          pkey,
-          stopCheck
-        );
-
-      if (ok) {
-        break;
-      }
-
-    } catch (_) {
-    }
-
-    await delay(3000);
-  }
-
-  //
-  // history
-  //
-
-  while (
-    Date.now() - start <
-    2 * 60 * 1000
-  ) {
-
-    checkStop(stopCheck);
-
-    const history =
-      await getHistory(
-        stopCheck
-      );
-
-    const row =
-      history.find(
-        x =>
-          String(
-            x.pkey || ""
-          ) === pkey
-      );
-
-    if (row) {
-
-      const otp =
-        extractOtp(
-          row
-        );
-
-      if (
-        /^\d{6}$/.test(
-          otp
-        ) &&
-        otp !== otp1
-      ) {
-
-        return otp;
-      }
-    }
-
-    await delay(3000);
-  }
-
-  throw new Error(
-    "SMS2_TIMEOUT"
-  );
-}
-
-
-// ======================================================
-// EXPORT
-// ======================================================
-
-function configure(username, password) {
-  username = String(username || '').trim();
-  password = String(password || '');
-  if (!username || !password) throw new Error('PREMIUM_SMS_API_CREDENTIALS_REQUIRED');
-  if (username !== API_USERNAME || password !== API_PASSWORD) resetToken();
-  API_USERNAME = username;
-  API_PASSWORD = password;
-}
-
-// Serialize orders and match a newly created history entry by pkey.
-// If the provider does not expose an identifiable new order, fail safely.
+// Premium Bandai SMS: NorthDinhJPN External API (Api.html).
+// Only this module is changed; keep the existing UI and mode interface.
+const API_BASE = 'https://gsmcloudjpn.online/api/ext';
+const POLL_MS = 4000;
+const OTP_TIMEOUT = 10 * 60 * 1000;
+let serviceId = '';
+let smsServer = 2;
+let apiKey = '';
 let orderQueue = Promise.resolve();
+let smsQueue = Promise.resolve();
+let nextSmsRequestAt = 0;
+function stop(fn) { if (typeof fn === 'function') fn(); }
+function sleep(ms) { return new Promise(r => $delay(ms / 1000, r)); }
+function status(res) { return Number(res && res.response && res.response.statusCode || 0); }
+function msg(d) { return String(d && (d.msg || d.message || d.error) || 'UNKNOWN'); }
+function configure(requestedServiceId, suppliedKey, requestedServer) {
+  const sid = String(requestedServiceId == null ? '' : requestedServiceId).trim();
+  const k = String(suppliedKey || '').trim();
+  if (!/^[1-9]\d*$/.test(sid)) throw new Error('PREMIUM_EXT_SERVICE_ID_REQUIRED_OR_INVALID');
+  if (!k) throw new Error('PREMIUM_EXT_API_KEY_REQUIRED');
+  const selectedServer = String(requestedServer == null || requestedServer === '' ? '2' : requestedServer).trim();
+  if (selectedServer !== '1' && selectedServer !== '2') throw new Error('PREMIUM_EXT_SERVER_MUST_BE_1_OR_2');
+  serviceId = sid;
+  apiKey = k;
+  smsServer = Number(selectedServer);
+}
+function login(stopCheck) {
+  stop(stopCheck);
+  if (!apiKey) throw new Error('PREMIUM_EXT_API_KEY_REQUIRED');
+  return Promise.resolve(apiKey);
+}
+async function get(path, params, stopCheck) {
+  stop(stopCheck);
+  const apikey = await login(stopCheck);
+  const q = Object.assign({apikey}, params || {});
+  const query = Object.keys(q).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(q[k])).join('&');
+  const res = await $http.get({url:API_BASE + '/' + path + '?' + query,timeout:20,header:{Accept:'application/json'}});
+  const d = res && res.data;
+  if (status(res) === 200 && d && d.status === 'success') return d;
+  // Never refresh the key automatically: it is supplied by the user in HOME.
+  throw new Error('PREMIUM_EXT_' + path.toUpperCase() + '_FAILED_HTTP_' + status(res) + '_' + msg(d));
+}
+function resetToken() { /* Manual API key is owned by the UI; do not delete it. */ }
+function normalizePhone(v) {
+  let phone = String(v == null ? '' : v).replace(/\D/g, '');
+  if (phone.startsWith('81') && phone.length === 12) phone = '0' + phone.slice(2);
+  else if (phone && !phone.startsWith('0')) phone = '0' + phone;
+  return phone;
+}
+// Server 1 supplies the number immediately. Server 2 may first return
+// phone="Đang xin số..." with a valid PKEY. Never create a second order.
+async function order(stopCheck) {
+  stop(stopCheck);
+  if (!serviceId) throw new Error('PREMIUM_EXT_SERVICE_ID_REQUIRED');
+  const server = smsServer;
+  const d = await get('order',{serviceId:serviceId,server:server,country:'jpn'},stopCheck);
+  const pkey = String(d.pkey == null ? '' : d.pkey).trim();
+  const phone = normalizePhone(d.phone);
+  if (!pkey) throw new Error('PREMIUM_EXT_ORDER_MISSING_PKEY');
+  if (server === 1 && !phone) throw new Error('PREMIUM_EXT_SERVER1_MISSING_PHONE');
+  return {phone,pkey,sdt:phone,server:server,waitingPhone:!phone,expires_at:d.expires_at};
+}
+// For server 2, reuse the SAME PKEY while waiting for a real phone.
+// The documented getSms endpoint may or may not include a phone field.
+// If it does not, report this explicitly rather than re-ordering.
+async function waitForPhone(info,stopCheck) {
+  if (!info || !info.pkey) throw new Error('PREMIUM_EXT_PKEY_REQUIRED');
+  if (info.phone) return info;
+  if (Number(info.server) !== 2) throw new Error('PREMIUM_EXT_PHONE_MISSING');
+  const deadline = Date.now() + 60 * 60 * 1000;
+  let checks = 0;
+  while (Date.now() < deadline) {
+    stop(stopCheck);
+    const d = await pollOnce(info.pkey,stopCheck);
+    const phone = normalizePhone(d.phone);
+    if (phone) {
+      info.phone = phone;
+      info.sdt = phone;
+      info.waitingPhone = false;
+      console.log('[PREMIUM EXT SMS] Server 2 phone assigned');
+      return info;
+    }
+    if (++checks === 1) {
+      console.log('[PREMIUM EXT SMS] Server 2 waiting phone; getSms fields: ' + Object.keys(d).join(','));
+    }
+    await sleep(POLL_MS);
+  }
+  throw new Error('PREMIUM_EXT_SERVER2_PHONE_WAIT_TIMEOUT_CHECK_GETSMS_RESPONSE');
+}
+// Serialize order calls to respect the documented 10 orders/min/account limit.
 function orderPhoneSafe(stopCheck) {
   const task = orderQueue.catch(() => {}).then(async () => {
-    checkStop(stopCheck);
-    const before = await getHistory(stopCheck);
-    const known = new Set(before.map(x => String(x && x.pkey || '')).filter(Boolean));
-    const response = await order(stopCheck);
-    const obj = (response && response.data && typeof response.data === 'object') ? response.data : response;
-    const responseKey = String(obj && (obj.pkey || obj.orderId || obj.order_id) || '');
-    const started = Date.now();
-    while (Date.now() - started < POLL_TIMEOUT) {
-      checkStop(stopCheck);
-      const history = await getHistory(stopCheck);
-      const matched = history.find(x => x && x.pkey &&
-        (responseKey ? String(x.pkey) === responseKey : !known.has(String(x.pkey))) &&
-        normalizePhone(x.sdt) && String(x.trangThai || '') !== 'Đã hủy');
-      if (matched) return {phone:normalizePhone(matched.sdt), pkey:String(matched.pkey)};
-      await delay(POLL_INTERVAL);
-    }
-    throw new Error('PREMIUM_SMS_API_ORDER_NOT_IDENTIFIED');
+    stop(stopCheck);
+    const d = await order(stopCheck);
+    console.log('[PREMIUM EXT SMS] Order ready, pkey assigned to worker');
+    return d;
   });
   orderQueue = task.catch(() => {});
   return task;
 }
-
-module.exports = {
-  configure, orderPhoneSafe,
-  login,
-  order,
-  orderPhone,
-  getHistory,
-  waitPending,
-  waitOtp,
-  waitSms2,
-  getSms2,
-  getPhoneAndOtp,
-  resetToken
-};
+function orderPhone(stopCheck) { return orderPhoneSafe(stopCheck); }
+// Globally serialize getSms requests to avoid exceeding 30/min/IP across workers.
+function pollOnce(pkey, stopCheck) {
+  const task = smsQueue.catch(() => {}).then(async () => {
+    stop(stopCheck);
+    const delay = Math.max(0, nextSmsRequestAt - Date.now());
+    if (delay) await sleep(delay);
+    nextSmsRequestAt = Date.now() + 2100;
+    return get('getSms',{pkey},stopCheck);
+  });
+  smsQueue = task.catch(() => {});
+  return task;
+}
+async function waitOtp(pkey, phone, stopCheck) {
+  pkey = String(pkey || '').trim();
+  if (!pkey) throw new Error('PREMIUM_EXT_PKEY_REQUIRED');
+  const start = Date.now();
+  const timeout = OTP_TIMEOUT; // Both servers: max 10 minutes for OTP
+  while (Date.now() - start < timeout) {
+    stop(stopCheck);
+    const d = await pollOnce(pkey,stopCheck);
+    const otp = String(d.otp || '').trim();
+    if (otp && String(d.state || '') === 'Hoàn thành') {
+      if (!/^\d{6}$/.test(otp)) throw new Error('PREMIUM_EXT_INVALID_OTP_FORMAT');
+      console.log('[PREMIUM EXT SMS] OTP received for worker');
+      return otp;
+    }
+    await sleep(POLL_MS);
+  }
+  return null;
+}
+async function getSms2(pkey, stopCheck) {
+  pkey = String(pkey || '').trim();
+  if (!pkey) throw new Error('PREMIUM_EXT_SMS2_PKEY_REQUIRED');
+  return get('getSms2',{pkey},stopCheck);
+}
+async function waitOtpSms2(pkey, stopCheck) {
+  await getSms2(pkey,stopCheck);
+  return waitOtp(pkey,'',stopCheck);
+}
+async function getPhoneAndOtp(stopCheck) {
+  const info = await orderPhoneSafe(stopCheck);
+  await waitForPhone(info,stopCheck);
+  const otp = await waitOtp(info.pkey,info.phone,stopCheck);
+  if (!otp) throw new Error('PREMIUM_EXT_OTP_TIMEOUT');
+  return Object.assign({},info,{otp});
+}
+function waitSms2(stopCheck) {
+  const pkey = String($cache.get('north_sms2_pkey') || '');
+  if (!pkey) throw new Error('PREMIUM_EXT_SMS2_PKEY_REQUIRED');
+  return waitOtpSms2(pkey,stopCheck);
+}
+function getHistory() { throw new Error('PREMIUM_EXT_GET_HISTORY_NOT_SUPPORTED'); }
+function waitPending() { throw new Error('PREMIUM_EXT_WAIT_PENDING_NOT_REQUIRED'); }
+async function cancel(pkey,stopCheck) {
+  pkey = String(pkey || '').trim();
+  if (!pkey) throw new Error('PREMIUM_EXT_CANCEL_PKEY_REQUIRED');
+  return get('cancel',{pkey},stopCheck);
+}
+module.exports = {configure,login,order,orderPhoneSafe,orderPhone,waitForPhone,waitOtp,
+  getSms2,waitOtpSms2,waitSms2,getPhoneAndOtp,getHistory,waitPending,cancel,resetToken};

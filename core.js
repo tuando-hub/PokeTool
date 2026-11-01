@@ -67,8 +67,9 @@ let state = {
 
   form: {
     premiumSmsEnabled: "0",
-    premiumSmsId: "",
-    premiumSmsPass: "",
+    premiumSmsServiceId: "",
+    premiumSmsServer: "2",
+    premiumSmsApiKey: "",
     imapEmail: "",
     imapPass: "",
     buyQty: "1",
@@ -564,8 +565,9 @@ function resetAll() {
 
   state.form = {
     premiumSmsEnabled: "0",
-    premiumSmsId: "",
-    premiumSmsPass: "",
+    premiumSmsServiceId: "",
+    premiumSmsServer: "2",
+    premiumSmsApiKey: "",
     imapEmail: "",
     imapPass: "",
     buyQty: "1",

@@ -180,10 +180,14 @@ async function runAccount({acc,index,form,stopCheck}) {
     }
     // Registration form is ready: order a phone BEFORE filling any profile fields.
     if (smsEnabled) {
-      SmsApi.configure(f.premiumSmsId, f.premiumSmsPass);
-      progress(acc, 4, 'SMS API: đặt số điện thoại');
+      SmsApi.configure(f.premiumSmsServiceId, f.premiumSmsApiKey, f.premiumSmsServer);
+      progress(acc, 4, 'NorthDinh: lấy số Bandai');
       smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
-      // Normalize the GSMCloud number before filling the registration form.
+      if (smsInfo.waitingPhone) {
+        progress(acc, 4, 'NorthDinh SERVER 2: đang xin số (đã có PKEY)');
+        smsInfo = await SmsApi.waitForPhone(smsInfo, stopCheck);
+      }
+      // Normalize the NorthDinh number before filling the registration form.
       const rawPhone = String(smsInfo.phone == null ? '' : smsInfo.phone).trim();
       const phoneDigits = rawPhone.replace(/[\s()\-]/g, '');
       if (!/^\d+$/.test(phoneDigits) || phoneDigits.length < 9 || phoneDigits.length > 11) {
