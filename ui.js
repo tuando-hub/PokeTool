@@ -642,7 +642,7 @@ function renderCurrentTab() {
 
       pageView = dashboardPage();
 
-      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 1130 : 730;
+      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 1200 : 730;
       break;
 
     case "Data":
@@ -680,7 +680,7 @@ function dashboardPage() {
   return page(
     "dashboardPage",
 
-    expanded ? 1130 : 900,
+    expanded ? 1200 : 900,
 
     [
       headerCard(12),
@@ -695,7 +695,7 @@ function dashboardPage() {
 
       ...(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? [premiumSmsHomeFields(630)] : []),
 
-      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 915 : 638)
+      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 985 : 638)
     ]
   );
 }
@@ -1369,11 +1369,32 @@ function workerCard(top) {
 }
 
 function premiumSmsHomeFields(top) {
-  return card("premiumSmsHomeFields", top, 270, [
-    titleLabel("NORTHDINH SMS API", 16, 12),
-    field("premiumSmsApiKey", "API KEY", "Nhập NorthDinh API key", 12, true),
-    field("premiumSmsServiceId", "SERVICE ID", "8", 88, false),
-    field("premiumSmsServer", "SERVER (1 hoặc 2)", "2", 164, false)
+  const isFuyoura = String((Core.getState().form || {}).premiumSmsProvider) === 'fuyoura';
+  return card("premiumSmsHomeFields", top, 342, [
+    titleLabel("SMS API · " + (isFuyoura ? "FUYOURA" : "NORTHDINH"), 16, 12),
+    {
+      type: 'button',
+      props: {title: 'Nhà cung cấp: ' + (isFuyoura ? 'Fuyoura' : 'NorthDinh') + '  ▾',
+        bgcolor:$color(UI.INPUT_BG),titleColor:$color(T.text),radius:10,font:$font(13)},
+      layout: make => { make.left.right.inset(16);make.top.equalTo(46);make.height.equalTo(38); },
+      events: {tapped() {
+        syncFormToCore();
+        $ui.menu({items:['NorthDinh','Fuyoura'],handler:(_,idx) => {
+          if (idx == null) return;
+          Core.updateForm('premiumSmsProvider',idx===1?'fuyoura':'northdinh');
+          lastTab=null;renderCurrentTab();
+        }});
+      }}
+    },
+    ...(isFuyoura ? [
+      field("fuyouraApiKey", "API KEY", "Nhập Fuyoura API key", 62, true),
+      field("fuyouraProjectId", "PROJECT ID", "Nhập ID (ví dụ 70005)", 138, false),
+      field("fuyouraCountry", "COUNTRY", "jpn", 214, false)
+    ] : [
+      field("premiumSmsApiKey", "API KEY", "Nhập NorthDinh API key", 62, true),
+      field("premiumSmsServiceId", "SERVICE ID", "8", 138, false),
+      field("premiumSmsServer", "SERVER (1 hoặc 2)", "2", 214, false)
+    ])
   ]);
 }
 
@@ -1589,21 +1610,23 @@ function dataPage() {
 
   // Payment
   if (sec.payment) {
-    views.push(
-      dataSection(
-        "sectionPayment",
-        "Payment",
-        top,
-        [
-          area("creditOwnerList", "CARD OWNER", "YAMADA TARO", 12, 94),
-
-          area("creditList", "CARD LIST", "number-mm/yy-cvv", 130, 108)
-        ],
-        292
-      )
-    );
-
-    top += 312;
+    const f = Core.getState().form || {};
+    const threeDsOn = String(f.payment3dsEnabled || "0") === "1";
+    const paymentViews = [
+      area("creditOwnerList", "CARD OWNER", "YAMADA TARO", 12, 94),
+      area("creditList", "CARD LIST", "number-mm/yy-cvv", 130, 108),
+      paymentToggle("payment3dsEnabled", "3DS", 262)
+    ];
+    if (threeDsOn) {
+      paymentViews.push(
+        field("payment3dsImapMail", "3DS IMAP MAIL", "imap@gmail.com", 312, false),
+        field("payment3dsImapPass", "3DS IMAP PASS", "App Password", 388, true),
+        paymentToggle("payment3dsSmsEnabled", "SMS (Shortcuts)", 468)
+      );
+    }
+    const paymentHeight = threeDsOn ? 558 : 346;
+    views.push(dataSection("sectionPayment", "Payment", top, paymentViews, paymentHeight));
+    top += paymentHeight + 20;
   }
 
   return page("dataPage", top + 30, views);
@@ -1626,7 +1649,7 @@ function dataPageHeight() {
   }
 
   if (sec.payment) {
-    top += 312;
+    top += String((Core.getState().form || {}).payment3dsEnabled || "0") === "1" ? 578 : 366;
   }
 
   return top + 30;
@@ -2010,6 +2033,59 @@ function syncFormToCore() {
   Core.refreshStats();
 }
 
+function paymentToggle(id, title, top) {
+  return {
+    type: "view",
+    layout: make => {
+      make.top.equalTo(top + 30);
+      make.left.right.inset(16);
+      make.height.equalTo(44);
+    },
+    views: [
+      {
+        type: "label",
+        props: {
+          text: title,
+          font: $font("bold", 13),
+          textColor: $color(T.text)
+        },
+        layout: make => {
+          make.left.inset(0);
+          make.centerY.equalTo();
+          make.right.inset(74);
+          make.height.equalTo(32);
+        }
+      },
+      {
+        type: "switch",
+        props: {
+          id: id,
+          on: String((Core.getState().form || {})[id] || "0") === "1",
+          onColor: $color(UI.RUN)
+        },
+        layout: make => {
+          make.right.inset(0);
+          make.centerY.equalTo();
+        },
+        events: {
+          changed(sender) {
+            const enabled = sender.on ? "1" : "0";
+            if (id === "payment3dsEnabled") {
+              // Recreate Payment layout only when its height changes.
+              syncFormToCore();
+              Core.updateForm(id, enabled);
+              lastTab = null;
+              renderCurrentTab();
+            } else {
+              Core.updateForm(id, enabled);
+            }
+          }
+        }
+      }
+    ]
+  };
+}
+
 function dataSection(id, title, top, children, height) {
   return card(id, top, height, [titleLabel(title, 16, 12)].concat(children));
 }
@@ -2366,6 +2442,7 @@ function refreshQueueResult(state) {
   setText("resultFailed", cachedQueueResult.failedText);
 
   const logs = (state.logs || [])
+    .filter(log => log.type !== 'debug' || (Core.getDebugLogs && Core.getDebugLogs()))
     .map(log => {
       return logIcon(log.type) + " " + log.time + "  " + log.text;
     })
@@ -3343,6 +3420,14 @@ function logIcon(type) {
 
   if (type === "error") {
     return "🔴";
+  }
+
+  if (type === "debug") {
+    return "⚙️";
+  }
+
+  if (type === "wait") {
+    return "🟠";
   }
 
   return "🔵";

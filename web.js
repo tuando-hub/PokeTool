@@ -127,6 +127,348 @@ function layoutActiveWebViews() {
   });
 }
 
+
+// Read-only probe: tests whether an all-frame WKUserScript executes in child frames.
+// Never collects form contents, payment data, or verification codes.
+const FRAME_PROBE_SOURCE = `(function(){
+  if (window.__ptFrameProbeInstalled) return;
+  window.__ptFrameProbeInstalled = true;
+  if (window === window.top) {
+    window.__ptFrameProbeReports = [];
+    window.__ptFrameUiReports = [];
+    window.__pt3dsActionStatus = null;
+    window.addEventListener('message',function(event){
+      if(event.origin!=='https://authentication.cardinalcommerce.com' && event.origin!=='https://fep.sps-system.com' && event.origin!=='https://emvtds.sps-system.com') return;
+      var d=event.data;
+      if(d && d.__pt3dsActionResult==='v1') window.__pt3dsActionStatus=d.status;
+    });
+    window.__pt3dsChooseSms = function(){
+      window.__pt3dsActionStatus='REQUESTED';
+      var frames=document.querySelectorAll('iframe');
+      for(var i=0;i<frames.length;i++){
+        try{frames[i].contentWindow.postMessage({__pt3dsAction:'choose_sms_v1'},'*');}catch(_){}
+      }
+      return 'REQUESTED';
+    };
+
+    window.addEventListener('message', function(event) {
+      var d = event.data;
+      if (!d || d.__ptFrameProbe !== 'v1' || !d.child) return;
+      var origin = String(event.origin || '');
+      var arr = window.__ptFrameProbeReports;
+      if (arr && !arr.some(function(x){return x.origin === origin;}))
+        arr.push({origin:origin,at:Date.now()});
+      if (d.ui && typeof d.ui === 'object') {
+        var ui = window.__ptFrameUiReports;
+        if (!ui) return;
+        var entry = {origin:origin,at:Date.now(),ui:d.ui};
+        var pos = ui.findIndex(function(x){return x.origin===origin;});
+        if (pos >= 0) ui[pos] = entry;
+        else if (ui.length < 12) ui.push(entry);
+      }
+    });
+  } else {
+    var last = '';
+    window.addEventListener('message',function(event){
+      var d=event.data;
+      if(d && d.__pt3dsActionResult==='v1' && event.origin==='https://authentication.cardinalcommerce.com'){
+        try{window.parent.postMessage(d,'*');}catch(_){}
+      }
+    });
+    // Only performs SMS selection and Next; OTP entry/submit remain manual.
+    window.addEventListener('message',function(event){
+      if(event.origin!=='https://fep.sps-system.com' &&
+         event.origin!=='https://emvtds.sps-system.com' &&
+         event.origin!=='https://authentication.cardinalcommerce.com') return;
+      var d=event.data;
+      if(!d || d.__pt3dsAction!=='choose_sms_v1') return;
+      if(location.origin!=='https://authentication.cardinalcommerce.com'){
+        // Forward only to child frames if nested.
+        var children=document.querySelectorAll('iframe');
+        for(var i=0;i<children.length;i++){
+          try{children[i].contentWindow.postMessage(d,'*');}catch(_){}
+        }
+        return;
+      }
+      var status='NO_SMS_RADIO';
+      try {
+        var radios=Array.prototype.slice.call(document.querySelectorAll('input[type=radio]'));
+        var sms=radios.find(function(r){
+          var label=r.closest('label');
+          if(!label && r.id) label=document.querySelector('label[for="'+CSS.escape(r.id)+'"]');
+          return label && /SMS|ショートメッセージ/.test(label.textContent||'');
+        });
+        if(sms){
+          if(!sms.checked){sms.click();sms.dispatchEvent(new Event('change',{bubbles:true}));}
+          var buttons=Array.prototype.slice.call(document.querySelectorAll('button,input[type=submit],input[type=button]'));
+          var next=buttons.find(function(b){return /次へ|Next|Continue/i.test((b.textContent||b.value||'').trim()) && !b.disabled && b.getClientRects().length;});
+          if(next && sms.checked){next.click();status='SMS_SELECTED_NEXT_CLICKED';}
+          else status=sms.checked?'SMS_SELECTED_NEXT_NOT_FOUND':'SMS_NOT_SELECTED';
+        }
+      }catch(_){status='ACTION_ERROR';}
+      try{window.parent.postMessage({__pt3dsActionResult:'v1',status:status},'*');}catch(_){}
+    });
+    function snapshot(){
+      try {
+        var body = document.body;
+        if (!body) return {ready:document.readyState,body:false};
+        // Only structural metadata. Never read text, values, attributes, or secrets.
+        var visible = function(el) {return !!(el && el.getClientRects().length);};
+        var buttons = Array.prototype.filter.call(
+          document.querySelectorAll('button,input[type=submit],input[type=button]'),visible
+        );
+        var radios = Array.prototype.filter.call(
+          document.querySelectorAll('input[type=radio]'),visible
+        );
+        var textFields = Array.prototype.filter.call(
+          document.querySelectorAll('input:not([type=hidden]):not([type=radio]):not([type=checkbox]):not([type=submit]):not([type=button])'),visible
+        );
+        // Identify the two screens without transmitting any text or input values.
+        // Match only fixed UI keywords; never serialize user-entered data.
+        var labels = Array.prototype.map.call(
+          document.querySelectorAll('label,button,input[type=submit],input[type=button]'),
+          function(e) { return visible(e) ? String(e.textContent || e.getAttribute('value') || '').slice(0,80) : ''; }
+        ).join(' ');
+        var hasSmsLabel = /SMS|ショートメッセージ|携帯電話/.test(labels);
+        var hasEmailLabel = /メール|E.mail|Email/i.test(labels);
+        var hasNextButton = /次へ|続行|Continue|Next/i.test(labels);
+        var hasSubmitButton = /送信|認証|確認|Submit|Verify/i.test(labels);
+        var hasOtpAutocomplete = textFields.some(function(e) {
+          return e.getAttribute('autocomplete') === 'one-time-code';
+        });
+        var hasOtpHint = textFields.some(function(e) {
+          return /otp|one.time|verification|auth.?code|認証|確認|ワンタイム/i.test(
+            String(e.getAttribute('name') || '') + ' ' +
+            String(e.getAttribute('id') || '') + ' ' +
+            String(e.getAttribute('placeholder') || '')
+          );
+        });
+        var screen = 'UNKNOWN';
+        if (textFields.length > 0 && (hasOtpAutocomplete || hasOtpHint || (hasSubmitButton && radios.length===0))) {
+          screen = 'OTP_INPUT';
+        } else if (radios.length >= 2 && (hasSmsLabel || hasEmailLabel)) {
+          screen = 'METHOD_SELECTION';
+        } else if (textFields.length > 0 && radios.length === 0 && buttons.length > 0) {
+          screen = 'POSSIBLE_OTP_INPUT';
+        } else if (radios.length >= 2 && buttons.length > 0) {
+          screen = 'POSSIBLE_METHOD_SELECTION';
+        }
+        // Describe controls without accessing input values, OTP, or card details.
+        function safeSelector(e){
+          // Unique CSS path, anchored at id when possible.
+          var parts=[];
+          for(var n=e;n&&n.nodeType===1;n=n.parentElement){
+            var tag=n.tagName.toLowerCase();
+            var id=n.getAttribute('id');
+            if(id && /^[A-Za-z_][\w:-]{0,69}$/.test(id)){
+              parts.unshift(tag+'#'+CSS.escape(id));
+              break;
+            }
+            var parent=n.parentElement;
+            if(!parent){parts.unshift(tag);break;}
+            var peers=Array.prototype.filter.call(parent.children,function(x){return x.tagName===n.tagName;});
+            parts.unshift(tag+':nth-of-type('+(peers.indexOf(n)+1)+')');
+          }
+          return parts.join(' > ');
+        }
+        function safeLabel(e){
+          // Labels only: never serialize field contents or arbitrary page text.
+          var text='';
+          if (e.tagName.toLowerCase()==='input') {
+            if (e.type==='radio' || e.type==='checkbox') {
+              var id=e.getAttribute('id');
+              var label=id ? Array.prototype.find.call(document.querySelectorAll('label'),function(l){return l.htmlFor===id;}) : null;
+              if (!label) label=e.closest('label');
+              text=label ? label.textContent : '';
+            } else if (e.type==='submit' || e.type==='button') {
+              text=e.getAttribute('value') || '';
+            } else {
+              text=e.getAttribute('aria-label') || '';
+            }
+          } else if (e.tagName.toLowerCase()==='button' || e.getAttribute('role')==='button') {
+            text=e.textContent || e.getAttribute('aria-label') || '';
+          }
+          text=String(text).replace(/\s+/g,' ').trim().slice(0,70);
+          // Avoid unexpectedly reporting numeric codes or sensitive user text.
+          return /\d{4,}|@|(?:\d[\s-]*){8,}/.test(text) ? '[redacted]' : text;
+        }
+        function describe(e,kind){
+          return {
+            kind:kind,
+            selector:safeSelector(e),
+            type:(e.getAttribute('type')||'').slice(0,25),
+            label:safeLabel(e),
+            disabled:!!e.disabled,
+            checked:kind==='radio' ? !!e.checked : undefined,
+            maxLength:kind==='field' && e.maxLength>=0 ? e.maxLength : undefined,
+            autocomplete:kind==='field' ? (e.getAttribute('autocomplete')||'').slice(0,35) : undefined
+          };
+        }
+        var controls=[];
+        buttons.slice(0,12).forEach(function(e){controls.push(describe(e,'button'));});
+        radios.slice(0,12).forEach(function(e){controls.push(describe(e,'radio'));});
+        textFields.slice(0,12).forEach(function(e){controls.push(describe(e,'field'));});
+        Array.prototype.filter.call(document.querySelectorAll('[role=button]'),visible)
+          .slice(0,8).forEach(function(e){controls.push(describe(e,'button-role'));});
+        return {
+          screen:screen,
+          controls:controls,
+          hints:{sms:hasSmsLabel,email:hasEmailLabel,next:hasNextButton,submit:hasSubmitButton,otpField:hasOtpAutocomplete||hasOtpHint},
+          ready:document.readyState,
+          body:true,
+          visibleButtons:buttons.length,
+          visibleRadios:radios.length,
+          visibleFields:textFields.length,
+          forms:document.forms.length,
+          nestedFrames:document.querySelectorAll('iframe').length
+        };
+      } catch (_) {return {error:'snapshot_unavailable'};}
+    }
+    function report(force){
+      try {
+        var ui=snapshot(), sig=JSON.stringify(ui);
+        if (!force && sig===last) return;
+        last=sig;
+        window.parent.postMessage({__ptFrameProbe:'v1',child:true,ui:ui},'*');
+      } catch (_) {}
+    }
+    report(true);
+    document.addEventListener('DOMContentLoaded',function(){report(true);},{once:true});
+    window.addEventListener('load',function(){report(true);},{once:true});
+    // Observe dynamic 3DS challenge rendering; report only on structural changes.
+    try {
+      var observer=new MutationObserver(function(){report(false);});
+      observer.observe(document,{subtree:true,childList:true,attributes:true,
+        attributeFilter:['style','hidden','type','class']});
+    } catch (_) {}
+    setInterval(function(){report(false);},3000);
+  }
+
+  // Shared automation bridge. Runs independently in each injected frame.
+  (function(){
+    function visible(el){return !!(el && !el.disabled && el.getClientRects().length);}
+    function label(el){
+      var a=[el.getAttribute('aria-label'),el.getAttribute('placeholder'),el.getAttribute('name'),el.id,el.value];
+      if(el.labels) for(var i=0;i<el.labels.length;i++) a.push(el.labels[i].textContent);
+      a.push(el.textContent);return a.filter(Boolean).join(' ').trim();
+    }
+    function selector(el){
+      if(el.id && document.querySelectorAll('[id="'+String(el.id).replace(/"/g,'\\"')+'"]').length===1) return '#'+CSS.escape(el.id);
+      var path=[];while(el && el.nodeType===1 && path.length<15){
+        var tag=el.tagName.toLowerCase(),i=1,p=el;
+        while((p=p.previousElementSibling))if(p.tagName===el.tagName)i++;
+        path.unshift(tag+':nth-of-type('+i+')');el=el.parentElement;
+      }return path.join(' > ');
+    }
+    function candidates(kind){
+      var q=kind==='fill'?'input:not([type=hidden]),textarea,select':kind==='select'?'input[type=radio],input[type=checkbox],option':kind==='find'?'input,textarea,select,button,a,[role=button]':'button,input[type=submit],input[type=button],a,[role=button]';
+      return Array.prototype.filter.call(document.querySelectorAll(q),visible);
+    }
+    function match(el,target){
+      if(!target)return false;
+      try{if(el.matches(target))return true;}catch(_){}
+      var x=label(el).toLowerCase(),t=String(target).toLowerCase();
+      return x===t || x.split(/\\s+/).indexOf(t)>=0 || x.indexOf(t)>=0;
+    }
+    function scan(){
+      var result=[];['fill','select','click'].forEach(function(kind){
+        candidates(kind).slice(0,80).forEach(function(el){
+          result.push({kind:kind,tag:el.tagName.toLowerCase(),type:el.type||'',label:label(el).slice(0,100),selector:selector(el)});
+        });
+      });return result.slice(0,120);
+    }
+    function relay(d){
+      var children=document.querySelectorAll('iframe');
+      for(var i=0;i<children.length;i++)try{children[i].contentWindow.postMessage(d,'*');}catch(_){}
+    }
+    window.addEventListener('message',function(event){
+      var d=event.data;
+      if(!d || d.__ptAutoCmd!=='v1')return;
+      // Accept commands only from the parent frame; top-level requests originate locally.
+      if(window!==window.top && event.source!==window.parent)return;
+      var frame=String(d.frame||'all');
+      if(frame!=='all' && location.hostname.indexOf(frame)<0){relay(d);return;}
+      var status='NOT_FOUND',item=null,items=[];
+      try{
+        if(d.action==='scan'){items=scan();status='OK';}
+        else {
+          var found=candidates(d.action).filter(function(el){return match(el,d.target);});
+          if(found.length>1){status='AMBIGUOUS';items=found.slice(0,8).map(function(el){return {selector:selector(el),label:label(el).slice(0,80)};});}
+          else if(found.length===1){
+            item=found[0];status='FOUND';
+            if(d.action==='fill'){
+              if(item.type==='password' || /password|cc-|card|cvv|cvc/i.test(label(item))) status='SENSITIVE_MANUAL';
+              else {item.focus();item.value=String(d.value||'');item.dispatchEvent(new Event('input',{bubbles:true}));item.dispatchEvent(new Event('change',{bubbles:true}));status='OK';}
+            }else if(d.action==='select'){if(!item.checked)item.click();status='OK';}
+            else if(d.action==='click'){item.click();status='OK';}else if(d.action==='find'){status='OK';}
+          }
+        }
+      }catch(_){status='ERROR';}
+      var out={__ptAutoResult:'v1',id:d.id,origin:location.origin,status:status,selector:item?selector(item):null,items:items};
+      if(window===window.top){window.__ptAutoResults=window.__ptAutoResults||[];window.__ptAutoResults.push(out);}
+      else try{window.parent.postMessage(out,'*');}catch(_){}
+      if(status==='NOT_FOUND' && d.action==='scan' || d.action==='find')relay(d);
+    });
+    if(window===window.top){
+      window.__ptAutoResults=[];window.__ptAutoSeq=0;
+      window.__ptAutoDispatch=function(cmd){
+        cmd.__ptAutoCmd='v1';cmd.id=String(++window.__ptAutoSeq);window.postMessage(cmd,'*');
+        var children=document.querySelectorAll('iframe');
+        for(var i=0;i<children.length;i++)try{children[i].contentWindow.postMessage(cmd,'*');}catch(_){}
+        return cmd.id;
+      };
+      window.addEventListener('message',function(e){
+        var d=e.data;if(!d || d.__ptAutoResult!=='v1')return;
+        // Only messages from direct iframe windows are accepted.
+        var frames=document.querySelectorAll('iframe'),ok=false;
+        for(var i=0;i<frames.length;i++)try{if(frames[i].contentWindow===e.source){ok=true;break;}}catch(_){}
+        if(ok)window.__ptAutoResults.push(d);
+      });
+    }else{
+      window.addEventListener('message',function(e){
+        if(e.data && e.data.__ptAutoResult==='v1'){
+          var frames=document.querySelectorAll('iframe'),ok=false;
+          for(var i=0;i<frames.length;i++)try{if(frames[i].contentWindow===e.source){ok=true;break;}}catch(_){}
+          if(ok)try{window.parent.postMessage(e.data,'*');}catch(_){}
+        }
+      });
+    }
+  })();
+})();`;
+function installFrameProbe(config) {
+  try {
+    const controller = $objc('WKUserContentController').invoke('alloc').invoke('init');
+    const script = $objc('WKUserScript').invoke('alloc').invoke(
+      'initWithSource:injectionTime:forMainFrameOnly:',
+      FRAME_PROBE_SOURCE, 0, false
+    );
+    if (!controller || !script) return {installed:false,error:'init_failed'};
+    controller.invoke('addUserScript:', script);
+    config.invoke('setUserContentController:', controller);
+    return {installed:true};
+  } catch(e) { return {installed:false,error:String(e)}; }
+}
+
+async function getFrameProbeReports(wv) {
+  const raw = await evalJS(wv, `(function(){try{return JSON.stringify({
+    installed:!!window.__ptFrameProbeInstalled,
+    reports:window.__ptFrameProbeReports||[],
+    uiReports:window.__ptFrameUiReports||[],
+    frames:document.querySelectorAll('iframe').length
+  })}catch(e){return JSON.stringify({error:String(e)})}})()`);
+  try {return JSON.parse(String(raw));}
+  catch(e) {return {error:String(raw)};}
+}
+
+async function choose3dsSms(wv){
+  const result=await evalJS(wv, '(function(){return typeof window.__pt3dsChooseSms==="function"?window.__pt3dsChooseSms():"NOT_INSTALLED"})()');
+  return String(result);
+}
+async function get3dsSmsActionStatus(wv){
+  const result=await evalJS(wv, '(function(){return window.__pt3dsActionStatus||"NONE"})()');
+  return String(result);
+}
+
 function create(url) {
   const initialUrl = String(url || "about:blank");
   const host = $("webHost");
@@ -153,6 +495,9 @@ function create(url) {
 
     config.invoke("setProcessPool:", processPool);
     config.invoke("setWebsiteDataStore:", dataStore);
+
+    const frameProbeSetup = installFrameProbe(config);
+    if (!frameProbeSetup.installed) Core.addLog("WK FRAME PROBE INSTALL · " + frameProbeSetup.error, "warn");
 
     const hostNative = host.runtimeValue();
 
@@ -354,16 +699,46 @@ function getActiveCount() {
 
 function evalJS(wv, script) {
   return new Promise(resolve => {
-    if (!wv) {
-      resolve(null);
-      return;
+    if (!wv || wv._destroyed) return resolve(null);
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (!settled) { settled = true; resolve('__EVAL_TIMEOUT__'); }
+    }, 5000);
+    try {
+      wv.eval({script, handler: value => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(value);
+      }});
+    } catch (e) {
+      if (!settled) { settled = true; clearTimeout(timeout); resolve('__EVAL_ERROR__'); }
     }
-
-    wv.eval({
-      script,
-      handler: resolve
-    });
   });
+}
+
+// Read-only iframe capability diagnostic. Never inspect field values or tokens.
+async function diagnoseFrames(wv) {
+  const script = `(function(){
+    var result={mainUrl:location.origin,frameCount:0,frames:[]};
+    var frames=document.querySelectorAll('iframe');
+    result.frameCount=frames.length;
+    for(var i=0;i<frames.length;i++){
+      var f=frames[i],item={index:i,id:f.id||'',srcOrigin:'',access:'unknown'};
+      try {item.srcOrigin=new URL(f.getAttribute('src')||'',location.href).origin;}catch(e){}
+      try {
+        var d=f.contentDocument;
+        if(!d){item.access='null_document';}
+        else {var n=d.documentElement;item.access=n?'accessible':'empty_document';}
+      } catch(e) {item.access=e.name==='SecurityError'?'cross_origin_blocked':'blocked_'+e.name;}
+      result.frames.push(item);
+    }
+    return JSON.stringify(result);
+  })()`;
+  try {
+    const raw=await evalJS(wv,script);
+    return raw ? JSON.parse(String(raw)) : {error:'MAIN_FRAME_EVAL_UNAVAILABLE'};
+  } catch(e) {return {error:'FRAME_DIAGNOSTIC_FAILED'};}
 }
 
 async function waitVar(wv, varName, timeout) {
@@ -751,7 +1126,125 @@ async function waitVisible(wv, selector, timeout) {
   return false;
 }
 
+
+/**
+ * PokeTool - WKWebView Frame Capability Diagnostic
+ *
+ * Kiểm tra khả năng tạo WKUserScript cho mọi frame.
+ * Không đọc OTP, cookie, token hoặc dữ liệu biểu mẫu.
+ * Không thay đổi nội dung trang web.
+ */
+function checkFrameScriptSupport() {
+  const result = {
+    wkUserScript: false,
+    wkContentController: false,
+    allFramesSupported: false,
+    mainFrameOnly: null,
+    errors: []
+  };
+
+  try {
+    const WKUserScript = $objc("WKUserScript");
+    const WKUserContentController =
+      $objc("WKUserContentController");
+
+    result.wkUserScript = !!WKUserScript;
+    result.wkContentController =
+      !!WKUserContentController;
+
+    if (!WKUserScript) {
+      result.errors.push("WKUserScript unavailable");
+      return result;
+    }
+
+    const source = "window.__poketoolFrameProbe = true;";
+
+    const script = WKUserScript
+      .invoke("alloc")
+      .invoke(
+        "initWithSource:injectionTime:forMainFrameOnly:",
+        source,
+        0,
+        false
+      );
+
+    if (!script) {
+      result.errors.push("WKUserScript init failed");
+      return result;
+    }
+
+    result.allFramesSupported = true;
+
+    try {
+      const flag = script.invoke("isForMainFrameOnly");
+
+      result.mainFrameOnly =
+        typeof flag.rawValue === "function"
+          ? flag.rawValue()
+          : flag;
+
+    } catch (error) {
+      result.errors.push(
+        "Cannot read mainFrameOnly: " + String(error)
+      );
+    }
+
+  } catch (error) {
+    result.errors.push(String(error));
+  }
+
+  return result;
+}
+
+/**
+ * Ghi log kết quả kiểm tra.
+ */
+function logFrameScriptSupport() {
+  const result = checkFrameScriptSupport();
+
+  Core.addLog(
+    "WK FRAME SUPPORT · " + JSON.stringify(result),
+    result.allFramesSupported ? "info" : "warn"
+  );
+
+  return result;
+}
+
+
+
+// Generic frame-aware automation. Does not expose field values in logs.
+async function autoCommand(wv, action, target, options) {
+  options=options||{};
+  const command={action:action,target:target||'',frame:options.frame||'all'};
+  if(action==='fill')command.value=String(options.value==null?'':options.value);
+  const id=await evalJS(wv,'window.__ptAutoDispatch('+JSON.stringify(command)+')');
+  if(!id)return {status:'BRIDGE_UNAVAILABLE'};
+  const timeout=options.timeout||4000,started=Date.now();
+  let all=[];
+  while(Date.now()-started<timeout){
+    await delay(200);
+    const raw=await evalJS(wv,'JSON.stringify((window.__ptAutoResults||[]).filter(x=>x.id==='+JSON.stringify(String(id))+'))');
+    try{all=JSON.parse(String(raw||'[]'));}catch(_){}
+    const good=all.find(x=>x.status==='OK'||x.status==='AMBIGUOUS'||x.status==='SENSITIVE_MANUAL');
+    if(good)return good;
+  }
+  return all.find(x=>x.status==='FOUND')||{status:'NOT_FOUND',results:all.length};
+}
+async function autoScan(wv,options){return autoCommand(wv,'scan','',options);}
+async function autoClick(wv,target,options){return autoCommand(wv,'click',target,options);}
+async function autoSelect(wv,target,options){return autoCommand(wv,'select',target,options);}
+async function autoFill(wv,target,value,options){return autoCommand(wv,'fill',target,Object.assign({},options||{},{value:value}));}
+async function autoWait(wv,target,options){
+  options=options||{};const until=Date.now()+(options.timeout||15000);
+  while(Date.now()<until){
+    const result=await autoCommand(wv,'find',target,Object.assign({},options,{timeout:800}));
+    if(result.status==='OK'||result.status==='FOUND')return result;
+    await delay(400);
+  }return {status:'TIMEOUT'};
+}
+
 module.exports = {
+  autoScan, autoClick, autoSelect, autoFill, autoWait,
   delay,
   get,
   create,
@@ -763,6 +1256,10 @@ module.exports = {
   layoutActiveWebViews,
 
   evalJS,
+  diagnoseFrames,
+  getFrameProbeReports,
+  choose3dsSms,
+  get3dsSmsActionStatus,
   waitVar,
   waitPageReady,
   waitVisible,
@@ -777,5 +1274,7 @@ module.exports = {
 
   clearSession,
   hasTermsButton,
-  acceptTermsIfNeeded
+  acceptTermsIfNeeded,
+  checkFrameScriptSupport,
+  logFrameScriptSupport
 };

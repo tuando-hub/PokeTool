@@ -3,6 +3,7 @@
 const Core = require('../core');
 const Web = require('../web');
 const SmsApi = require('../services/premium_sms_api');
+const Fuyoura = require('../services/fuyoura_sms_api');
 const ACTIVE_OTP = new Set();
 const START = 'https://p-bandai.jp/newregist_pre_bnid';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -50,9 +51,13 @@ function watchOtp(wv, acc, onSuccess, smsInfo, onFailure) {
     if (smsInfo && smsInfo.pkey) {
       (async () => {
         try {
-          const otp = await SmsApi.waitOtp(smsInfo.pkey, smsInfo.phone, () => {
+          const otp = await (smsInfo.provider === "fuyoura"
+             ? Fuyoura.waitOtp(smsInfo, () => {
+                 if (token.cancelled || wv._destroyed) throw new Error('SMS_WATCH_CANCELLED');
+               })
+             : SmsApi.waitOtp(smsInfo.pkey, smsInfo.phone, () => {
             if (token.cancelled || wv._destroyed) throw new Error('SMS_WATCH_CANCELLED');
-          });
+          }));
           if (token.cancelled || wv._destroyed) return;
           if (!otp) {
             log('SMS API: quá 5 phút chưa có OTP; đã yêu cầu cancel số', 'error');
@@ -192,12 +197,18 @@ async function runAccount({acc,index,form,stopCheck}) {
     }
     // Registration form is ready: order a phone BEFORE filling any profile fields.
     if (smsEnabled) {
-      SmsApi.configure(f.premiumSmsServiceId, f.premiumSmsApiKey, f.premiumSmsServer);
-      progress(acc, 4, 'NorthDinh: lấy số Bandai');
-      smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
-      if (smsInfo.waitingPhone) {
-        progress(acc, 4, 'NorthDinh SERVER 2: đang xin số (đã có PKEY)');
-        smsInfo = await SmsApi.waitForPhone(smsInfo, stopCheck);
+      if (String(f.premiumSmsProvider || 'northdinh') === 'fuyoura') {
+        const cfg = Fuyoura.configure(f.fuyouraProjectId, f.fuyouraApiKey, f.fuyouraCountry);
+        progress(acc, 4, 'Fuyoura: lấy số Bandai');
+        smsInfo = await Fuyoura.orderPhoneSafe(cfg, stopCheck);
+      } else {
+        SmsApi.configure(f.premiumSmsServiceId, f.premiumSmsApiKey, f.premiumSmsServer);
+        progress(acc, 4, 'NorthDinh: lấy số Bandai');
+        smsInfo = await SmsApi.orderPhoneSafe(stopCheck);
+        if (smsInfo.waitingPhone) {
+          progress(acc, 4, 'NorthDinh SERVER 2: đang xin số (đã có PKEY)');
+          smsInfo = await SmsApi.waitForPhone(smsInfo, stopCheck);
+        }
       }
       // Normalize the NorthDinh number before filling the registration form.
       const rawPhone = String(smsInfo.phone == null ? '' : smsInfo.phone).trim();

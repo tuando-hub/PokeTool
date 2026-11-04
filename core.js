@@ -67,6 +67,10 @@ let state = {
 
   form: {
     premiumSmsEnabled: "0",
+    premiumSmsProvider: "northdinh",
+    fuyouraApiKey: "",
+    fuyouraProjectId: "",
+    fuyouraCountry: "jpn",
     premiumSmsServiceId: "",
     premiumSmsServer: "2",
     premiumSmsApiKey: "",
@@ -86,7 +90,11 @@ let state = {
     birthdate: "",
 
     creditList: "",
-    creditOwnerList: ""
+    creditOwnerList: "",
+    payment3dsEnabled: "0",
+    payment3dsImapMail: "",
+    payment3dsImapPass: "",
+    payment3dsSmsEnabled: "0"
   },
 
   logs: []
@@ -232,7 +240,24 @@ function getAppVersion() {
   }
 }
 
+// Unified log levels. Enable detailed diagnostics with Core.setDebugLogs(true).
+let debugLogsEnabled = false;
+const logCache = Object.create(null);
+function setDebugLogs(enabled) { debugLogsEnabled = !!enabled; emit(); }
+function getDebugLogs() { return debugLogsEnabled; }
+function debugLog(text) { return addLog(text, 'debug'); }
+function compactLogText(value) {
+  return String(value == null ? '' : value).replace(/\s*\n\s*/g, ' ').trim();
+}
 function addLog(text, type) {
+  type = String(type || 'info').toLowerCase();
+  if (type === 'debug' && !debugLogsEnabled) return;
+  const message = compactLogText(text);
+  if (!message) return;
+  // Collapse repeated non-error messages from the same source within 3 seconds.
+  const now = Date.now();
+  if (type !== 'error' && type !== 'warn' && logCache[message] && now - logCache[message] < 3000) return;
+  logCache[message] = now;
   const d = new Date();
 
   const hh = String(d.getHours()).padStart(2, "0");
@@ -241,8 +266,8 @@ function addLog(text, type) {
 
   state.logs.unshift({
     time: `${hh}:${mm}:${ss}`,
-    text: String(text || ""),
-    type: type || "info"
+    text: message,
+    type: type
   });
 
   state.logs = state.logs.slice(0, 200);
@@ -565,6 +590,10 @@ function resetAll() {
 
   state.form = {
     premiumSmsEnabled: "0",
+    premiumSmsProvider: "northdinh",
+    fuyouraApiKey: "",
+    fuyouraProjectId: "",
+    fuyouraCountry: "jpn",
     premiumSmsServiceId: "",
     premiumSmsServer: "2",
     premiumSmsApiKey: "",
@@ -582,7 +611,11 @@ function resetAll() {
     address2: "",
     birthdate: "",
     creditList: "",
-    creditOwnerList: ""
+    creditOwnerList: "",
+    payment3dsEnabled: "0",
+    payment3dsImapMail: "",
+    payment3dsImapPass: "",
+    payment3dsSmsEnabled: "0"
   };
 
   state.logs = [];
@@ -617,6 +650,9 @@ module.exports = {
   updateCurrent,
   updateStats,
   addLog,
+  debugLog,
+  setDebugLogs,
+  getDebugLogs,
   onChange,
 
   saveText,
