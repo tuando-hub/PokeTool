@@ -1,7 +1,8 @@
 // Premium Bandai lottery: use the project's existing isolated WebView.
-// 3-D Secure stays in the visible WebView for manual completion.
+// 3DS uses the configured SMS clipboard or reference-bound email source.
 const Core = require('../core');
 const Web = require('../web');
+const ThreeDs = require('../services/premium_3ds');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = (s, type) => Core.addLog('[Premium Lottery] ' + s, type || 'info');
 const debug = s => Core.debugLog('[Premium Lottery] ' + s);
@@ -154,6 +155,14 @@ function payment(form, index) {
 }
 
 async function runAccount({acc,index,form,stopCheck}) {
+  const threeDsStarted = Date.now();
+  const threeDsOptions = {
+    since:threeDsStarted,
+    deadline:threeDsStarted + 15 * 60 * 1000,
+    clipboard() { try { return $clipboard.text; } catch (_) { return ''; } },
+    log
+  };
+  const threeDs = ThreeDs.create(form,threeDsOptions);
   const product = String(form.productIds || '')
     .split(/[,\s]+/)
     .filter(Boolean)[0];
@@ -350,13 +359,15 @@ return 'CLICK_DISPATCHED';
     );
 
     if (stopCheck) stopCheck();
-    try {
+    if (threeDs.sms) try {
       $clipboard.text = '';
       log('CLIPBOARD · Đã xóa nội dung văn bản trước 登録');
     } catch (e) {
       log('CLIPBOARD · Không thể xóa clipboard: ' + String(e), 'warn');
     }
 
+    threeDsOptions.since = Date.now();
+    threeDsOptions.deadline = threeDsOptions.since + 5 * 60 * 1000;
     const registered = await evaluate(
       wv,
       'var a=Array.from(document.querySelectorAll(".exec-button a")).find(function(e){return e.textContent.trim()==="登録"});if(!a)return "MISSING";a.click();return "OK"'
@@ -382,9 +393,10 @@ return 'CLICK_DISPATCHED';
     let signatureOtpSelectors = '';
     let lastFrameUiSignature = '';
     let lastFrameUiCheck = 0;
-    // === THÊM MỚI: cờ điều khiển auto-submit OTP ===
+    // Lock before dispatch: a missing acknowledgement must never resubmit OTP.
     let otpSubmitted = false;
-    let otpSubmitAttempts = 0;
+    let otpSubmitStarted = false;
+    let emailAutomationFailed = false;
 
     const started = Date.now();
     const maxWaitMs = 5 * 60 * 1000;
@@ -511,24 +523,25 @@ return 'CLICK_DISPATCHED';
               log('3DS SCREEN · UNKNOWN · Đang chờ giao diện 3DS ổn định');
           }
         }
-        if (challenge && challenge.ui && challenge.ui.screen === 'METHOD_SELECTION' &&
-            !smsActionRequested && typeof Web.choose3dsSms === 'function') {
+        if (threeDs.enabled && challenge && challenge.ui && challenge.ui.screen === 'METHOD_SELECTION' &&
+            !smsActionRequested) {
           smsActionRequested = true;
-          const result = await Web.choose3dsSms(wv);
-          debug('3DS SMS AUTO · '+result);
+          const result = threeDs.sms ? await Web.choose3dsSms(wv) : await Web.choose3dsEmail(wv);
+          debug('3DS '+threeDs.method+' AUTO · '+result);
         }
         if (smsActionRequested && !smsActionLogged &&
             typeof Web.get3dsSmsActionStatus === 'function') {
           const action = await Web.get3dsSmsActionStatus(wv);
           if (action !== 'REQUESTED' && action !== 'NONE') {
             smsActionLogged = true;
-            log('3DS · '+(action === 'SMS_SELECTED_NEXT_CLICKED' ? 'Đã chọn SMS → 次へ' : action),
-                action === 'SMS_SELECTED_NEXT_CLICKED' ? 'success' : 'warn');
+            const selected = action === 'SMS_SELECTED_NEXT_CLICKED' || action === 'EMAIL_SELECTED_NEXT_CLICKED';
+            log('3DS · '+(selected ? 'Đã chọn '+(threeDs.sms?'SMS':'Email')+' → 次へ' : action),
+                selected ? 'success' : 'warn');
           }
         }
         if (challenge && challenge.ui &&
             /OTP_INPUT/.test(challenge.ui.screen || '')) {
-          if (!otpClipboardStart && challenge.ui.screen === 'OTP_INPUT') {
+          if (threeDs.sms && !otpClipboardStart && challenge.ui.screen === 'OTP_INPUT') {
             otpClipboardStart = Date.now();
             lastClipboardCheck = 0;
             clipboardCheckCount = 0;
@@ -548,37 +561,49 @@ return 'CLICK_DISPATCHED';
           // TỰ ĐỘNG NHẬP OTP + BẤM 送信 (dùng Web.autoFill / autoClick
           // để thao tác xuyên iframe cross-origin CardinalCommerce)
           // =========================================================
-          if (field && submit && !otpSubmitted && otpSubmitAttempts < 3) {
-            let otp = '';
-            try { otp = String($clipboard.text || '').trim(); } catch (_) {}
+          if (threeDs.enabled && field && submit && !otpSubmitStarted && !emailAutomationFailed) {
+            let code = null;
+            try {
+              code = threeDs.read(challenge.ui);
+            } catch (error) {
+              if (threeDs.sms) throw error;
+              emailAutomationFailed = true;
+              threeDs.cancel();
+              log('3DS Email · '+String(error.message || error),'error');
+              log('3DS Email · Tự lấy mail đã dừng; hãy nhập OTP và bấm 送信 thủ công trong WebView (vẫn chờ kết quả thanh toán)', 'warn');
+            }
+            const otp = code ? code.otp : '';
 
             if (/^\d{4,8}$/.test(otp)) {
-              otpSubmitAttempts++;
+              otpSubmitStarted = true;
 
               // Bước 1: nhập OTP vào ô trong iframe
-              const fillRes = await Web.autoFill(wv, field.selector, otp, {settleMs: 400});
-              debug('3DS OTP FILL · attempt=' + otpSubmitAttempts + ' · ' + JSON.stringify(fillRes));
+              const frameOptions = {frame:'authentication.cardinalcommerce.com',referenceCode:code.referenceCode,
+                onceKey:'premium-otp-submit'};
+              const fillRes = await Web.autoFill(wv, field.selector, otp, frameOptions);
+              debug('3DS OTP FILL · ' + JSON.stringify(fillRes));
 
               if (fillRes && fillRes.status === 'OK') {
                 await sleep(300);
+                if (stopCheck) stopCheck();
 
                 // Bước 2: click nút 送信 trong iframe
-                const clickRes = await Web.autoClick(wv, submit.selector, {settleMs: 600});
+                const clickRes = await Web.autoClick(wv, submit.selector, frameOptions);
                 debug('3DS OTP SUBMIT · ' + JSON.stringify(clickRes));
 
-                if (clickRes && clickRes.status === 'OK') {
+                if (clickRes && (clickRes.status === 'OK' || clickRes.status === 'ALREADY_DISPATCHED')) {
                   otpSubmitted = true;
                   clipboardPollingDone = true;
-                  log('OTP · Đã nhập và bấm 送信 (lần ' + otpSubmitAttempts + ')', 'success');
+                  log('OTP · Đã gửi lệnh bấm 送信 một lần; chờ kết quả, không tự bấm lại', 'success');
                 } else {
-                  log('OTP · Không bấm được 送信: ' + (clickRes && clickRes.status || '?'), 'warn');
+                  log('OTP · Chưa xác nhận kết quả bấm 送信: ' + (clickRes && clickRes.status || '?') + '; không tự gửi lại', 'warn');
                 }
               } else {
                 log('OTP · Không ghi được vào ô: ' + (fillRes && fillRes.status || '?'), 'warn');
               }
 
-              if (!otpSubmitted && otpSubmitAttempts >= 3) {
-                log('OTP · Đã thử 3 lần, dừng tự động. Cần xác thực thủ công.', 'warn');
+              if (!otpSubmitted) {
+                log('OTP · Đã dừng tự động để tránh gửi lặp. Hãy kiểm tra màn hình 3DS trước khi thao tác thủ công.', 'warn');
               }
             }
           }
@@ -654,6 +679,7 @@ return 'CLICK_DISPATCHED';
     };
 
   } finally {
+    threeDs.cancel();
     if (!done) {
       log(acc.email+' · Đã dừng hoặc lỗi trước 応募完了', 'warn');
     }

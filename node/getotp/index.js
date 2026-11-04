@@ -276,6 +276,7 @@ function fetchMail(imap, uid, markSeen = true) {
     let done = false;
     let timer = null;
     let raw = "";
+    let attributes = {};
 
     const finish = value => {
       if (done) return;
@@ -301,6 +302,7 @@ function fetchMail(imap, uid, markSeen = true) {
     );
 
     f.on("message", msg => {
+      msg.on('attributes', value => { attributes = value; });
 
       msg.on("body", stream => {
 
@@ -327,6 +329,7 @@ function fetchMail(imap, uid, markSeen = true) {
 
           const parsed =
             await simpleParser(raw);
+          parsed._imapReceivedAt = attributes.date;
 
           log("PARSE OK:", uid);
 
@@ -912,6 +915,15 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
   const eventId   = process.argv[5];
   const mode      = process.argv[6];
   const extraRaw  = process.argv[7];
+  let threeDsConfig = null;
+  if (mode === 'ThreeDsEmail') {
+    try { threeDsConfig = JSON.parse(extraRaw || '{}'); } catch (_) {}
+    if (!threeDsConfig || !/^[A-Z0-9][A-Z0-9-]{2,63}$/.test(String(threeDsConfig.referenceCode || '')) ||
+        !Number.isFinite(threeDsConfig.since) || !Number.isFinite(threeDsConfig.deadline) || threeDsConfig.deadline <= Date.now()) {
+      $jsbox.notify(eventId,{error:'THREEDS_EMAIL_INVALID_REQUEST'});
+      return;
+    }
+  }
 
   const imap = new Imap({
     user: imapEmail,
@@ -925,6 +937,10 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
   });
 
   let finished = false;
+  let threeDsTimer = null;
+  if (threeDsConfig) {
+    threeDsTimer = setTimeout(() => done({error:'THREEDS_EMAIL_TIMEOUT'}),Math.min(300000,threeDsConfig.deadline-Date.now()));
+  }
 
   // ================= DONE =================
   function done(data) {
@@ -932,8 +948,10 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
     if (finished) return;
 
     finished = true;
+    if (threeDsTimer) clearTimeout(threeDsTimer);
 
-    log("DONE:", data);
+    if (threeDsConfig) log('3DS EMAIL DONE:',data && data.value ? 'FOUND' : 'FAILED');
+    else log("DONE:", data);
 
     try {
 
@@ -985,6 +1003,9 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
 
   // ================= ERROR =================
   imap.once("error", err => {
+    if (threeDsConfig) {
+      return done(require('../../services/three_ds_imap_error').describeImapError(err,imapEmail,imapPass,'getotp'));
+    }
 
     log(
       "IMAP ERROR:",
@@ -1001,10 +1022,13 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
 
     imap.openBox(
       "INBOX",
-      false,
+      !!threeDsConfig,
       async (err, box) => {
 
         if (err) {
+          if (threeDsConfig) {
+            return done(require('../../services/three_ds_imap_error').describeImapError(err,imapEmail,imapPass,'open-inbox'));
+          }
 
           log(
             "OPENBOX ERROR:",
@@ -1012,6 +1036,16 @@ async function runCheckMail(imap, imapEmail, imapPass, eventId, extraRaw) {
           );
 
           return done(null);
+        }
+
+        if (threeDsConfig) {
+          try {
+            await require('./three_ds').run(imap,threeDsConfig,done,() => finished,search,fetchMail,
+              ms => new Promise(resolve => setTimeout(resolve,ms)));
+          } catch (error) {
+            done(require('../../services/three_ds_imap_error').describeImapError(error,imapEmail,imapPass,'lookup'));
+          }
+          return;
         }
 
         if (mode === "CheckMail") {

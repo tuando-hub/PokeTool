@@ -2026,7 +2026,11 @@ function syncFormToCore() {
     const element = $(key);
 
     if (element) {
-      Core.updateForm(key, element.text || "");
+      if (key === 'payment3dsEnabled' || key === 'payment3dsSmsEnabled') {
+        Core.updateForm(key, element.on ? '1' : '0');
+      } else {
+        Core.updateForm(key, element.text || "");
+      }
     }
   });
 

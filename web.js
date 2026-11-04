@@ -1,6 +1,7 @@
 // ================= WEB MANAGER - PokeTool V1.2 =================
 
 const Core = require("./core");
+const ThreeDsReference = require('./services/three_ds_reference');
 const PAGE_TIMEOUT = 15000;
 
 // ============================================================
@@ -128,9 +129,10 @@ function layoutActiveWebViews() {
 }
 
 
-// Read-only probe: tests whether an all-frame WKUserScript executes in child frames.
-// Never collects form contents, payment data, or verification codes.
+// Frame probe reports structural metadata and the transaction reference only.
+// It never reports OTP field values or payment data.
 const FRAME_PROBE_SOURCE = `(function(){
+  var extractReferenceCode = ${ThreeDsReference.extractReferenceCode.toString()};
   if (window.__ptFrameProbeInstalled) return;
   window.__ptFrameProbeInstalled = true;
   if (window === window.top) {
@@ -142,14 +144,15 @@ const FRAME_PROBE_SOURCE = `(function(){
       var d=event.data;
       if(d && d.__pt3dsActionResult==='v1') window.__pt3dsActionStatus=d.status;
     });
-    window.__pt3dsChooseSms = function(){
+    window.__pt3dsChooseMethod = function(method){
       window.__pt3dsActionStatus='REQUESTED';
       var frames=document.querySelectorAll('iframe');
       for(var i=0;i<frames.length;i++){
-        try{frames[i].contentWindow.postMessage({__pt3dsAction:'choose_sms_v1'},'*');}catch(_){}
+        try{frames[i].contentWindow.postMessage({__pt3dsAction:'choose_method_v1',method:method},'*');}catch(_){}
       }
       return 'REQUESTED';
     };
+    window.__pt3dsChooseSms = function(){return window.__pt3dsChooseMethod('sms');};
 
     window.addEventListener('message', function(event) {
       var d = event.data;
@@ -175,13 +178,14 @@ const FRAME_PROBE_SOURCE = `(function(){
         try{window.parent.postMessage(d,'*');}catch(_){}
       }
     });
-    // Only performs SMS selection and Next; OTP entry/submit remain manual.
+    // Select only the requested delivery method, then advance to its challenge.
     window.addEventListener('message',function(event){
       if(event.origin!=='https://fep.sps-system.com' &&
          event.origin!=='https://emvtds.sps-system.com' &&
          event.origin!=='https://authentication.cardinalcommerce.com') return;
       var d=event.data;
-      if(!d || d.__pt3dsAction!=='choose_sms_v1') return;
+      if(!d || (d.__pt3dsAction!=='choose_sms_v1' && d.__pt3dsAction!=='choose_method_v1')) return;
+      var method=d.method==='email'?'email':'sms';
       if(location.origin!=='https://authentication.cardinalcommerce.com'){
         // Forward only to child frames if nested.
         var children=document.querySelectorAll('iframe');
@@ -190,19 +194,19 @@ const FRAME_PROBE_SOURCE = `(function(){
         }
         return;
       }
-      var status='NO_SMS_RADIO';
+      var status=method==='email'?'NO_EMAIL_RADIO':'NO_SMS_RADIO';
       try {
         var radios=Array.prototype.slice.call(document.querySelectorAll('input[type=radio]'));
         var sms=radios.find(function(r){
           var label=r.closest('label');
           if(!label && r.id) label=document.querySelector('label[for="'+CSS.escape(r.id)+'"]');
-          return label && /SMS|ショートメッセージ/.test(label.textContent||'');
+          return label && (method==='email' ? /メール|E[ -]?mail/i : /SMS|ショートメッセージ/).test(label.textContent||'');
         });
         if(sms){
           if(!sms.checked){sms.click();sms.dispatchEvent(new Event('change',{bubbles:true}));}
           var buttons=Array.prototype.slice.call(document.querySelectorAll('button,input[type=submit],input[type=button]'));
           var next=buttons.find(function(b){return /次へ|Next|Continue/i.test((b.textContent||b.value||'').trim()) && !b.disabled && b.getClientRects().length;});
-          if(next && sms.checked){next.click();status='SMS_SELECTED_NEXT_CLICKED';}
+          if(next && sms.checked){next.click();status=method==='email'?'EMAIL_SELECTED_NEXT_CLICKED':'SMS_SELECTED_NEXT_CLICKED';}
           else status=sms.checked?'SMS_SELECTED_NEXT_NOT_FOUND':'SMS_NOT_SELECTED';
         }
       }catch(_){status='ACTION_ERROR';}
@@ -212,7 +216,7 @@ const FRAME_PROBE_SOURCE = `(function(){
       try {
         var body = document.body;
         if (!body) return {ready:document.readyState,body:false};
-        // Only structural metadata. Never read text, values, attributes, or secrets.
+        // Structural metadata, plus the displayed reference on the OTP screen.
         var visible = function(el) {return !!(el && el.getClientRects().length);};
         var buttons = Array.prototype.filter.call(
           document.querySelectorAll('button,input[type=submit],input[type=button]'),visible
@@ -312,6 +316,8 @@ const FRAME_PROBE_SOURCE = `(function(){
           .slice(0,8).forEach(function(e){controls.push(describe(e,'button-role'));});
         return {
           screen:screen,
+          referenceCode:screen==='OTP_INPUT' && location.hostname==='authentication.cardinalcommerce.com'
+            ? extractReferenceCode(body.innerText || '') : '',
           controls:controls,
           hints:{sms:hasSmsLabel,email:hasEmailLabel,next:hasNextButton,submit:hasSubmitButton,otpField:hasOtpAutocomplete||hasOtpHint},
           ready:document.readyState,
@@ -346,6 +352,8 @@ const FRAME_PROBE_SOURCE = `(function(){
 
   // Shared automation bridge. Runs independently in each injected frame.
   (function(){
+    var seenCommands=Object.create(null),commandOrder=[];
+    var dispatchedClicks=Object.create(null);
     function visible(el){return !!(el && !el.disabled && el.getClientRects().length);}
     function label(el){
       var a=[el.getAttribute('aria-label'),el.getAttribute('placeholder'),el.getAttribute('name'),el.id,el.value];
@@ -386,10 +394,16 @@ const FRAME_PROBE_SOURCE = `(function(){
       if(!d || d.__ptAutoCmd!=='v1')return;
       // Accept commands only from the parent frame; top-level requests originate locally.
       if(window!==window.top && event.source!==window.parent)return;
+      if(!d.id || seenCommands[d.id])return;
+      seenCommands[d.id]=true;commandOrder.push(d.id);
+      if(commandOrder.length>256)delete seenCommands[commandOrder.shift()];
       var frame=String(d.frame||'all');
       if(frame!=='all' && location.hostname.indexOf(frame)<0){relay(d);return;}
       var status='NOT_FOUND',item=null,items=[];
       try{
+        if(d.referenceCode && extractReferenceCode(document.body ? document.body.innerText : '')!==d.referenceCode){
+          throw new Error('REFERENCE_MISMATCH');
+        }
         if(d.action==='scan'){items=scan();status='OK';}
         else {
           var found=candidates(d.action).filter(function(el){return match(el,d.target);});
@@ -400,21 +414,27 @@ const FRAME_PROBE_SOURCE = `(function(){
               if(item.type==='password' || /password|cc-|card|cvv|cvc/i.test(label(item))) status='SENSITIVE_MANUAL';
               else {item.focus();item.value=String(d.value||'');item.dispatchEvent(new Event('input',{bubbles:true}));item.dispatchEvent(new Event('change',{bubbles:true}));status='OK';}
             }else if(d.action==='select'){if(!item.checked)item.click();status='OK';}
-            else if(d.action==='click'){item.click();status='OK';}else if(d.action==='find'){status='OK';}
+            else if(d.action==='click'){
+              if(d.onceKey && dispatchedClicks[d.onceKey])status='ALREADY_DISPATCHED';
+              else {
+                if(d.onceKey)dispatchedClicks[d.onceKey]=true;
+                item.click();status='OK';
+              }
+            }else if(d.action==='find'){status='OK';}
           }
         }
-      }catch(_){status='ERROR';}
+      }catch(e){status=e.message==='REFERENCE_MISMATCH'?'REFERENCE_MISMATCH':'ERROR';}
       var out={__ptAutoResult:'v1',id:d.id,origin:location.origin,status:status,selector:item?selector(item):null,items:items};
       if(window===window.top){window.__ptAutoResults=window.__ptAutoResults||[];window.__ptAutoResults.push(out);}
       else try{window.parent.postMessage(out,'*');}catch(_){}
-      if(status==='NOT_FOUND' && d.action==='scan' || d.action==='find')relay(d);
+      if(status==='NOT_FOUND' || d.action==='scan' || d.action==='find')relay(d);
     });
     if(window===window.top){
       window.__ptAutoResults=[];window.__ptAutoSeq=0;
+      var sessionId=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
       window.__ptAutoDispatch=function(cmd){
-        cmd.__ptAutoCmd='v1';cmd.id=String(++window.__ptAutoSeq);window.postMessage(cmd,'*');
-        var children=document.querySelectorAll('iframe');
-        for(var i=0;i<children.length;i++)try{children[i].contentWindow.postMessage(cmd,'*');}catch(_){}
+        cmd.__ptAutoCmd='v1';cmd.id=sessionId+'-'+String(++window.__ptAutoSeq);window.postMessage(cmd,'*');
+        // The local listener relays to child frames; do not also send here.
         return cmd.id;
       };
       window.addEventListener('message',function(e){
@@ -463,6 +483,10 @@ async function getFrameProbeReports(wv) {
 async function choose3dsSms(wv){
   const result=await evalJS(wv, '(function(){return typeof window.__pt3dsChooseSms==="function"?window.__pt3dsChooseSms():"NOT_INSTALLED"})()');
   return String(result);
+}
+
+async function choose3dsEmail(wv){
+  return String(await evalJS(wv, '(function(){return typeof window.__pt3dsChooseMethod==="function"?window.__pt3dsChooseMethod("email"):"NOT_INSTALLED"})()'));
 }
 async function get3dsSmsActionStatus(wv){
   const result=await evalJS(wv, '(function(){return window.__pt3dsActionStatus||"NONE"})()');
@@ -1216,6 +1240,8 @@ function logFrameScriptSupport() {
 async function autoCommand(wv, action, target, options) {
   options=options||{};
   const command={action:action,target:target||'',frame:options.frame||'all'};
+  if(options.referenceCode)command.referenceCode=String(options.referenceCode);
+  if(options.onceKey)command.onceKey=String(options.onceKey);
   if(action==='fill')command.value=String(options.value==null?'':options.value);
   const id=await evalJS(wv,'window.__ptAutoDispatch('+JSON.stringify(command)+')');
   if(!id)return {status:'BRIDGE_UNAVAILABLE'};
@@ -1225,7 +1251,7 @@ async function autoCommand(wv, action, target, options) {
     await delay(200);
     const raw=await evalJS(wv,'JSON.stringify((window.__ptAutoResults||[]).filter(x=>x.id==='+JSON.stringify(String(id))+'))');
     try{all=JSON.parse(String(raw||'[]'));}catch(_){}
-    const good=all.find(x=>x.status==='OK'||x.status==='AMBIGUOUS'||x.status==='SENSITIVE_MANUAL');
+    const good=all.find(x=>x.status==='OK'||x.status==='AMBIGUOUS'||x.status==='SENSITIVE_MANUAL'||x.status==='REFERENCE_MISMATCH'||x.status==='ALREADY_DISPATCHED');
     if(good)return good;
   }
   return all.find(x=>x.status==='FOUND')||{status:'NOT_FOUND',results:all.length};
@@ -1259,6 +1285,7 @@ module.exports = {
   diagnoseFrames,
   getFrameProbeReports,
   choose3dsSms,
+  choose3dsEmail,
   get3dsSmsActionStatus,
   waitVar,
   waitPageReady,
