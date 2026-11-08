@@ -3035,19 +3035,11 @@ function importAllColumns(clearProgress) {
       lists.birthdate.push(row.birthdate);
     }
 
-    if (row.creditOwner) {
-      lists.creditOwnerList.push(row.creditOwner);
-    }
-
-    if (row.creditNumber) {
-      lists.creditList.push(
-        row.creditNumber +
-          "-" +
-          (row.creditExpire || "") +
-          "-" +
-          (row.creditCsv || "")
-      );
-    }
+    // Preserve empty card rows to keep the mapping aligned with mailList.
+    lists.creditOwnerList.push(row.creditOwner || "");
+    lists.creditList.push(row.creditNumber
+      ? row.creditNumber + "-" + (row.creditExpire || "") + "-" + (row.creditCsv || "")
+      : "");
 
     if (!buyQty && row.buyQty) {
       buyQty = row.buyQty;
@@ -3469,6 +3461,57 @@ function markDataDirty() {
   scheduleRefresh("result");
 }
 
+// Non-modal manual checkpoint: the WebView remains scrollable and interactive.
+function waitForLotteryPaymentOK(stopCheck) {
+  return new Promise((resolve, reject) => {
+    const root = $('root');
+    if (!root) return reject(new Error('LOTTERY_MANUAL_OK_ROOT_NOT_FOUND'));
+    const id = 'lotteryPaymentManualOK';
+    const old = $(id);
+    if (old) old.remove();
+    let finished = false;
+    let ticker = null;
+    const cleanup = () => {
+      if (ticker) clearInterval(ticker);
+      const view = $(id);
+      if (view) view.remove();
+    };
+    root.add({
+      type: 'button',
+      props: {
+        id,
+        title: 'OK – Tiếp tục',
+        bgcolor: $color('#10B981'),
+        titleColor: $color('#FFFFFF'),
+        cornerRadius: 10,
+        font: $font('bold', 16)
+      },
+      layout: make => {
+        make.left.inset(16);
+        make.right.inset(16);
+        make.bottom.inset(BOTTOM_H + 8);
+        make.height.equalTo(44);
+      },
+      events: {
+        tapped: () => {
+          if (finished) return;
+          try { if (stopCheck) stopCheck(); }
+          catch (e) { finished = true; cleanup(); reject(e); return; }
+          finished = true;
+          cleanup();
+          resolve();
+        }
+      }
+    });
+    // Respect STOP while waiting for manual confirmation.
+    ticker = setInterval(() => {
+      if (finished || !stopCheck) return;
+      try { stopCheck(); }
+      catch (e) { finished = true; cleanup(); reject(e); }
+    }, 500);
+  });
+}
+
 // ============================================================
 // EXPORT
 // ============================================================
@@ -3482,5 +3525,6 @@ module.exports = {
   reloadWebView,
   getWebView,
 
-  markDataDirty
+  markDataDirty,
+  waitForLotteryPaymentOK
 };

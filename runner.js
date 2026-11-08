@@ -214,7 +214,7 @@ function validateBeforeRun() {
   if (mailList && accounts.length === 0) {
     errors.push("MAIL LIST sai định dạng");
   }
-  if (mode === "Buy" || mode === "BuyJumpPlus" || mode === "BandaiPremium_Lottery") {
+  if (mode === "Buy" || mode === "BuyJumpPlus") {
     const creditList = String(f.creditList || "").trim();
     const creditOwnerList = String(f.creditOwnerList || "").trim();
     if (!creditList) {
@@ -422,6 +422,13 @@ async function run() {
           const reason = String(outcome.error ? outcome.error.message || outcome.error : 'LOTTERY_NOT_COMPLETED');
           pushFailed(acc,reason);
           Core.addLog('[Premium Lottery] Failed '+acc.email+': '+reason,'error');
+          if (reason === 'Dính Paydi') {
+            // Payment was not submitted: skip only this account and continue.
+            pending.shift();
+            savePending(pending);
+            Core.refreshStats();
+            continue;
+          }
           // Do not automatically advance to another account on an uncertain payment state.
           break;
         }

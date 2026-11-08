@@ -533,7 +533,14 @@ function buildTasksFromForm(form, mode, accounts) {
     };
 
     fields.forEach(k => {
-      task[k] = acc[k] || pickLine(lineMap[k], i);
+      if (mode === "BandaiPremium_Lottery" && (k === "creditList" || k === "creditOwnerList")) {
+        // Card data is strictly row-aligned. One card row belongs to one account,
+        // never broadcast it to every account in the batch.
+        const aligned = String(form[k] || "").split(/\r?\n/);
+        task[k] = acc[k] != null && String(acc[k]).trim() ? String(acc[k]).trim() : String(aligned[i] || "").trim();
+      } else {
+        task[k] = acc[k] || pickLine(lineMap[k], i);
+      }
     });
 
     return task;

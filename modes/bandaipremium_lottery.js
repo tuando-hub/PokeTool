@@ -117,8 +117,9 @@ function payment(form, index) {
   const cardLine = lines(form.creditList)[index-1];
   const ownerLine = lines(form.creditOwnerList)[index-1];
 
-  if (!cardLine || !ownerLine) {
-    throw new Error('MISSING_CARD_FOR_ACCOUNT_'+index);
+  if (!cardLine) return null;
+  if (!ownerLine) {
+    throw new Error('MISSING_CARD_OWNER_FOR_ACCOUNT_'+index);
   }
 
   const m = cardLine.match(
@@ -171,7 +172,8 @@ async function runAccount({acc,index,form,stopCheck}) {
     throw new Error('PRODUCT_ID_INVALID');
   }
 
-  const card = payment(form,index);
+  // Pending task is the authoritative per-account snapshot, not the UI form.
+  const card = payment({creditList:acc.creditList || '',creditOwnerList:acc.creditOwnerList || ''},1);
   const id = String(acc.email||'').split('@')[0];
 
   if (!id || !acc.pass) {
@@ -179,6 +181,8 @@ async function runAccount({acc,index,form,stopCheck}) {
   }
 
   const wv = Web.create('https://p-bandai.jp/login/');
+  
+  await sleep(1500);
 
   if (!wv) {
     throw new Error('WEBVIEW_CREATE_FAILED');
@@ -221,7 +225,7 @@ async function runAccount({acc,index,form,stopCheck}) {
       wv
     );
     
-    await sleep(2000);
+    await sleep(3000);
 
     await wait(
       wv,
@@ -264,31 +268,106 @@ async function runAccount({acc,index,form,stopCheck}) {
       'LOTTERY_SELECTED'
     );
 
-    await click(
+    // The lottery radio and payment select are on the SAME screen.
+    // Do not click 内容確認へ here: that would submit the saved-card default
+    // before we get a chance to select the new card.
+    step(4,'Chọn phương thức thanh toán');
+
+    // Select the exact payment field. Its inline onchange calls ChgLotPaymethod().
+    await wait(
       wv,
-      '#vote_button_id',
+      'var s=document.getElementById("pay_method_kbn");return s&&Array.from(s.options).some(function(o){return o.value==="99"})?"YES":"NO"',
       stopCheck,
-      'LOTTERY_REVIEW'
+      'LOTTERY_PAYMENT_SELECT',
+      60000
     );
 
-    step(4,'Xác nhận lottery');
+    // Select new card on the actual payment page and trigger the site's
+    // ChgLotPaymethod() through its native change event.
+    const paymentChoice = await evaluate(wv, `
+var s=document.getElementById('pay_method_kbn');
+var next=document.getElementById('vote_button_id');
+if(!s||!next)return 'PAYMENT_SCREEN_NOT_READY';
+if(${card ? 'true' : 'false'}){
+ var option=Array.from(s.options).find(function(o){return o.value==='99';});
+ if(!option)return 'NEW_CARD_OPTION_NOT_FOUND';
+ s.value='99';
+ s.dispatchEvent(new Event('input',{bubbles:true}));
+ s.dispatchEvent(new Event('change',{bubbles:true}));
+ return s.value==='99'&&s.selectedOptions.length&&s.selectedOptions[0].value==='99'
+   ? 'NEW_CARD_SELECTED' : 'SELECT_FAILED';
+}
+if(s.value==='22')return 'PAYDI';
+return s.value==='99'?'UNEXPECTED_NEW_CARD':'SAVED_CARD';
+`);
 
-    await click(
+    if (paymentChoice === 'PAYDI') throw new Error('Dính Paydi');
+    if (paymentChoice !== (card ? 'NEW_CARD_SELECTED' : 'SAVED_CARD')) {
+      throw new Error('LOTTERY_PAYMENT_'+paymentChoice);
+    }
+
+    if (card) {
+      // Wait for the site's payment change handler to settle.
+      await sleep(1200);
+      const paymentState = await evaluate(wv, `
+var s=document.getElementById('pay_method_kbn');
+var b=document.getElementById('vote_button_id');
+if(!s||!b||!b.isConnected)return 'PAYMENT_SCREEN_NOT_READY';
+return s.value==='99'?'NEW_CARD_READY':'WRONG_PAYMENT_'+s.value;
+`);
+      if (paymentState !== 'NEW_CARD_READY') {
+        throw new Error('LOTTERY_PAYMENT_'+paymentState);
+      }
+      log('PAYMENT · Đã chọn thẻ mới (99)', 'success');
+    } else {
+      log('PAYMENT · Giữ thẻ cũ mặc định');
+    }
+
+    // #vote_button_id is the payment-page 内容確認へ button.
+    // Never dispatch it before the non-modal OK checkpoint.
+    await click(wv, '#vote_button_id', stopCheck, 'LOTTERY_TO_REVIEW');
+
+    // On the review screen click 登録, without rechecking payment details.
+    await wait(
       wv,
-      '#BTN2',
+      'var body=document.body?document.body.innerText:"";var b=document.querySelector("#BTN2");return !document.getElementById("pay_method_kbn")&&b&&b.isConnected&&!b.disabled&&b.getClientRects().length&&/登録/.test(b.innerText||b.value||body)?"YES":"NO"',
       stopCheck,
-      'LOTTERY_REGISTER'
+      'LOTTERY_REGISTER_READY',
+      60000
     );
+    await click(wv, '#BTN2', stopCheck, 'LOTTERY_REGISTER');
 
-    step(5,'Chờ trang thanh toán');
+    if (!card) {
+      log('PAYMENT · Thẻ cũ: theo dõi 応募完了 hoặc 3DS sau 登録');
+    } else {
+    step(5,'Mở form thay đổi thẻ');
+    await sleep(1200);
+
+    // After lottery 登録, the gateway first displays the saved card.
+    // Click 変更 to open the new-card entry form. Never hardcode jsessionid.
+    await wait(
+      wv,
+      'var a=Array.from(document.querySelectorAll(".exec-change-button a")).find(function(e){return e.textContent.trim()==="変更"});return a&&a.isConnected&&!a.disabled&&a.getClientRects().length?"YES":"NO"',
+      stopCheck,
+      'CARD_CHANGE_BUTTON',
+      90000
+    );
+    await click(wv, '.exec-change-button a', stopCheck, 'CARD_CHANGE');
+    log('PAYMENT · Đã bấm 変更, chờ form nhập thẻ mới');
 
     await wait(
       wv,
       'return document.querySelector("#ccNumber_disp")?"YES":"NO"',
       stopCheck,
-      'CARD_PAGE',
+      'NEW_CARD_FORM',
       90000
     );
+
+    const pageState = await evaluate(wv, 'return document.querySelector("#ccNumber_disp")?"CARD_FORM":/応募完了/.test(document.body?document.body.innerText:"")?"DONE":"UNKNOWN"');
+    if (pageState === 'DONE') {
+      throw new Error('LOTTERY_PAYMENT_NEW_CARD_EXPECTED_BUT_SAVED_CARD_COMPLETED');
+    }
+    if (pageState !== 'CARD_FORM') throw new Error('LOTTERY_CARD_FORM_NOT_FOUND_'+pageState);
 
     step(6,'Nhập thông tin thẻ');
 
@@ -376,6 +455,8 @@ return 'CLICK_DISPATCHED';
     if (registered !== 'OK') {
       throw new Error('CARD_REGISTER_'+registered);
     }
+
+    } // End new-card-only form entry; saved cards use the same 3DS/done watcher.
 
     step(8, 'Theo dõi xác thực và 応募完了');
 
