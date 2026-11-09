@@ -491,15 +491,27 @@ return 'CLICK_DISPATCHED';
 
       const rawState = await Web.evalJS(wv, `(function(){
         try {
+          var body = document.body
+            ? (document.body.innerText || document.body.textContent || '')
+            : '';
+      
           return JSON.stringify({
             url: location.href,
             ready: document.readyState,
-            complete: !!(
-              document.body &&
-              document.body.innerText.includes('応募完了')
+      
+            complete: body.includes('応募完了'),
+      
+            cardError: (
+              body.includes('カード情報の入力中にエラーが発生しました') ||
+              (
+                body.includes('エラーが発生しました') &&
+                body.includes('応募は完了しておりません')
+              )
             ),
+      
             frames: document.querySelectorAll('iframe').length
           });
+      
         } catch(e) {
           return JSON.stringify({
             error: String(e)
@@ -516,6 +528,8 @@ return 'CLICK_DISPATCHED';
 
       if (snapshot && snapshot.error) {
         state = 'JS_ERROR';
+      } else if (snapshot && snapshot.cardError) {
+        state = 'CARD_ERROR';
       } else if (snapshot && snapshot.complete) {
         state = 'COMPLETE';
       } else if (
@@ -542,6 +556,11 @@ return 'CLICK_DISPATCHED';
         debug('3DS · ' + state + ' · elapsed=' + Math.round((Date.now() - started) / 1000) + 's');
       }
 
+      if (state === 'CARD_ERROR') {
+        log(acc.email + ' · Lỗi thẻ', 'error');
+        throw new Error('Lỗi thẻ');
+      }
+      
       if (state === 'COMPLETE') {
         completed = true;
         break;

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.32",
+  "version": "2.0.33",
   "changelog": {
     "items": [
       "Thêm : Mode Chusen BandaiPremium - Tích hợp lấy otp 3Ds bằng sms + Email"

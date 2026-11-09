@@ -176,49 +176,96 @@ function getJumpConbiniPayment(imapEmail, imapPass, targetMail, orderId) {
 
 // This request has its own event and deadline. Cancel stops local delivery;
 // the existing getotp worker also closes itself at the supplied deadline.
-function start3dsEmail(imapEmail, imapPass, referenceCode, since, deadline, onStatus) {
-  const eventId = 'THREEDS_EMAIL_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+function start3dsEmail(
+  imapEmail,
+  imapPass,
+  referenceCode,
+  since,
+  deadline,
+  onStatus
+) {
+  const eventId =
+    "THREEDS_EMAIL_" +
+    Date.now() +
+    "_" +
+    Math.random().toString(36).slice(2, 8);
   let finished = false;
   let timer;
   let retryTimer;
   let attempts = 0;
   let finish;
-  const promise = new Promise((resolve,reject) => {
-    finish = (error,result) => {
+  const promise = new Promise((resolve, reject) => {
+    finish = (error, result) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
       clearTimeout(retryTimer);
-      if (error) reject(error); else resolve(result);
+      if (error) reject(error);
+      else resolve(result);
     };
-    $nodejs.listen(eventId,result => {
+    $nodejs.listen(eventId, result => {
       if (finished || !result) return;
       if (result.error) {
-        if (result.retryable === true && attempts < 3 && deadline-Date.now() > 2500) {
+        if (
+          result.retryable === true &&
+          attempts < 3 &&
+          deadline - Date.now() > 2500
+        ) {
           if (retryTimer) return;
-          if (typeof onStatus === 'function') onStatus('3DS Email · Kết nối tạm lỗi, thử lại '+(attempts+1)+'/3 · '+String(result.error));
-          retryTimer = setTimeout(() => { retryTimer=null; run(); },1500);
+          if (typeof onStatus === "function")
+            onStatus(
+              "3DS Email · Kết nối tạm lỗi, thử lại " +
+                (attempts + 1) +
+                "/3 · " +
+                String(result.error)
+            );
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            run();
+          }, 1500);
           return;
         }
         return finish(new Error(String(result.error)));
       }
-      if (String(result.referenceCode || '') !== referenceCode || !/^\d{4,8}$/.test(String(result.value || ''))) {
-        return finish(new Error('THREEDS_EMAIL_INVALID_RESULT'));
+      if (
+        String(result.referenceCode || "") !== referenceCode ||
+        !/^\d{4,8}$/.test(String(result.value || ""))
+      ) {
+        return finish(new Error("THREEDS_EMAIL_INVALID_RESULT"));
       }
-      finish(null,String(result.value));
+      finish(null, String(result.value));
     });
-    timer = setTimeout(() => finish(new Error('THREEDS_EMAIL_TIMEOUT')),Math.max(1,deadline-Date.now()));
+    timer = setTimeout(
+      () => finish(new Error("THREEDS_EMAIL_TIMEOUT")),
+      Math.max(1, deadline - Date.now())
+    );
     function run() {
       if (finished) return;
       attempts++;
       try {
-        $nodejs.run({name:'PokeTool/node/getotp',argv:[imapEmail,imapPass,imapEmail,eventId,'ThreeDsEmail',
-          JSON.stringify({referenceCode,since,deadline})]});
-      } catch (_) { finish(new Error('THREEDS_EMAIL_START_FAILED')); }
+        $nodejs.run({
+          name: "PokeTool/node/getotp",
+          argv: [
+            imapEmail,
+            imapPass,
+            imapEmail,
+            eventId,
+            "ThreeDsEmail",
+            JSON.stringify({ referenceCode, since, deadline })
+          ]
+        });
+      } catch (_) {
+        finish(new Error("THREEDS_EMAIL_START_FAILED"));
+      }
     }
     run();
   });
-  return {promise,cancel() { finish(null,null); }};
+  return {
+    promise,
+    cancel() {
+      finish(null, null);
+    }
+  };
 }
 
 module.exports = {

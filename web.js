@@ -1,7 +1,7 @@
 // ================= WEB MANAGER - PokeTool V1.2 =================
 
 const Core = require("./core");
-const ThreeDsReference = require('./services/three_ds_reference');
+const ThreeDsReference = require("./services/three_ds_reference");
 const PAGE_TIMEOUT = 15000;
 
 // ============================================================
@@ -127,7 +127,6 @@ function layoutActiveWebViews() {
     }
   });
 }
-
 
 // Frame probe reports structural metadata and the transaction reference only.
 // It never reports OTP field values or payment data.
@@ -457,39 +456,65 @@ const FRAME_PROBE_SOURCE = `(function(){
 })();`;
 function installFrameProbe(config) {
   try {
-    const controller = $objc('WKUserContentController').invoke('alloc').invoke('init');
-    const script = $objc('WKUserScript').invoke('alloc').invoke(
-      'initWithSource:injectionTime:forMainFrameOnly:',
-      FRAME_PROBE_SOURCE, 0, false
-    );
-    if (!controller || !script) return {installed:false,error:'init_failed'};
-    controller.invoke('addUserScript:', script);
-    config.invoke('setUserContentController:', controller);
-    return {installed:true};
-  } catch(e) { return {installed:false,error:String(e)}; }
+    const controller = $objc("WKUserContentController")
+      .invoke("alloc")
+      .invoke("init");
+    const script = $objc("WKUserScript")
+      .invoke("alloc")
+      .invoke(
+        "initWithSource:injectionTime:forMainFrameOnly:",
+        FRAME_PROBE_SOURCE,
+        0,
+        false
+      );
+    if (!controller || !script)
+      return { installed: false, error: "init_failed" };
+    controller.invoke("addUserScript:", script);
+    config.invoke("setUserContentController:", controller);
+    return { installed: true };
+  } catch (e) {
+    return { installed: false, error: String(e) };
+  }
 }
 
 async function getFrameProbeReports(wv) {
-  const raw = await evalJS(wv, `(function(){try{return JSON.stringify({
+  const raw = await evalJS(
+    wv,
+    `(function(){try{return JSON.stringify({
     installed:!!window.__ptFrameProbeInstalled,
     reports:window.__ptFrameProbeReports||[],
     uiReports:window.__ptFrameUiReports||[],
     frames:document.querySelectorAll('iframe').length
-  })}catch(e){return JSON.stringify({error:String(e)})}})()`);
-  try {return JSON.parse(String(raw));}
-  catch(e) {return {error:String(raw)};}
+  })}catch(e){return JSON.stringify({error:String(e)})}})()`
+  );
+  try {
+    return JSON.parse(String(raw));
+  } catch (e) {
+    return { error: String(raw) };
+  }
 }
 
-async function choose3dsSms(wv){
-  const result=await evalJS(wv, '(function(){return typeof window.__pt3dsChooseSms==="function"?window.__pt3dsChooseSms():"NOT_INSTALLED"})()');
+async function choose3dsSms(wv) {
+  const result = await evalJS(
+    wv,
+    '(function(){return typeof window.__pt3dsChooseSms==="function"?window.__pt3dsChooseSms():"NOT_INSTALLED"})()'
+  );
   return String(result);
 }
 
-async function choose3dsEmail(wv){
-  return String(await evalJS(wv, '(function(){return typeof window.__pt3dsChooseMethod==="function"?window.__pt3dsChooseMethod("email"):"NOT_INSTALLED"})()'));
+async function choose3dsEmail(wv) {
+  return String(
+    await evalJS(
+      wv,
+      '(function(){return typeof window.__pt3dsChooseMethod==="function"?window.__pt3dsChooseMethod("email"):"NOT_INSTALLED"})()'
+    )
+  );
 }
-async function get3dsSmsActionStatus(wv){
-  const result=await evalJS(wv, '(function(){return window.__pt3dsActionStatus||"NONE"})()');
+async function get3dsSmsActionStatus(wv) {
+  const result = await evalJS(
+    wv,
+    '(function(){return window.__pt3dsActionStatus||"NONE"})()'
+  );
   return String(result);
 }
 
@@ -521,7 +546,8 @@ function create(url) {
     config.invoke("setWebsiteDataStore:", dataStore);
 
     const frameProbeSetup = installFrameProbe(config);
-    if (!frameProbeSetup.installed) Core.addLog("WK FRAME PROBE INSTALL · " + frameProbeSetup.error, "warn");
+    if (!frameProbeSetup.installed)
+      Core.addLog("WK FRAME PROBE INSTALL · " + frameProbeSetup.error, "warn");
 
     const hostNative = host.runtimeValue();
 
@@ -726,17 +752,27 @@ function evalJS(wv, script) {
     if (!wv || wv._destroyed) return resolve(null);
     let settled = false;
     const timeout = setTimeout(() => {
-      if (!settled) { settled = true; resolve('__EVAL_TIMEOUT__'); }
+      if (!settled) {
+        settled = true;
+        resolve("__EVAL_TIMEOUT__");
+      }
     }, 5000);
     try {
-      wv.eval({script, handler: value => {
-        if (settled) return;
+      wv.eval({
+        script,
+        handler: value => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          resolve(value);
+        }
+      });
+    } catch (e) {
+      if (!settled) {
         settled = true;
         clearTimeout(timeout);
-        resolve(value);
-      }});
-    } catch (e) {
-      if (!settled) { settled = true; clearTimeout(timeout); resolve('__EVAL_ERROR__'); }
+        resolve("__EVAL_ERROR__");
+      }
     }
   });
 }
@@ -760,9 +796,13 @@ async function diagnoseFrames(wv) {
     return JSON.stringify(result);
   })()`;
   try {
-    const raw=await evalJS(wv,script);
-    return raw ? JSON.parse(String(raw)) : {error:'MAIN_FRAME_EVAL_UNAVAILABLE'};
-  } catch(e) {return {error:'FRAME_DIAGNOSTIC_FAILED'};}
+    const raw = await evalJS(wv, script);
+    return raw
+      ? JSON.parse(String(raw))
+      : { error: "MAIN_FRAME_EVAL_UNAVAILABLE" };
+  } catch (e) {
+    return { error: "FRAME_DIAGNOSTIC_FAILED" };
+  }
 }
 
 async function waitVar(wv, varName, timeout) {
@@ -1150,7 +1190,6 @@ async function waitVisible(wv, selector, timeout) {
   return false;
 }
 
-
 /**
  * PokeTool - WKWebView Frame Capability Diagnostic
  *
@@ -1169,12 +1208,10 @@ function checkFrameScriptSupport() {
 
   try {
     const WKUserScript = $objc("WKUserScript");
-    const WKUserContentController =
-      $objc("WKUserContentController");
+    const WKUserContentController = $objc("WKUserContentController");
 
     result.wkUserScript = !!WKUserScript;
-    result.wkContentController =
-      !!WKUserContentController;
+    result.wkContentController = !!WKUserContentController;
 
     if (!WKUserScript) {
       result.errors.push("WKUserScript unavailable");
@@ -1183,14 +1220,12 @@ function checkFrameScriptSupport() {
 
     const source = "window.__poketoolFrameProbe = true;";
 
-    const script = WKUserScript
-      .invoke("alloc")
-      .invoke(
-        "initWithSource:injectionTime:forMainFrameOnly:",
-        source,
-        0,
-        false
-      );
+    const script = WKUserScript.invoke("alloc").invoke(
+      "initWithSource:injectionTime:forMainFrameOnly:",
+      source,
+      0,
+      false
+    );
 
     if (!script) {
       result.errors.push("WKUserScript init failed");
@@ -1203,16 +1238,10 @@ function checkFrameScriptSupport() {
       const flag = script.invoke("isForMainFrameOnly");
 
       result.mainFrameOnly =
-        typeof flag.rawValue === "function"
-          ? flag.rawValue()
-          : flag;
-
+        typeof flag.rawValue === "function" ? flag.rawValue() : flag;
     } catch (error) {
-      result.errors.push(
-        "Cannot read mainFrameOnly: " + String(error)
-      );
+      result.errors.push("Cannot read mainFrameOnly: " + String(error));
     }
-
   } catch (error) {
     result.errors.push(String(error));
   }
@@ -1234,43 +1263,94 @@ function logFrameScriptSupport() {
   return result;
 }
 
-
-
 // Generic frame-aware automation. Does not expose field values in logs.
 async function autoCommand(wv, action, target, options) {
-  options=options||{};
-  const command={action:action,target:target||'',frame:options.frame||'all'};
-  if(options.referenceCode)command.referenceCode=String(options.referenceCode);
-  if(options.onceKey)command.onceKey=String(options.onceKey);
-  if(action==='fill')command.value=String(options.value==null?'':options.value);
-  const id=await evalJS(wv,'window.__ptAutoDispatch('+JSON.stringify(command)+')');
-  if(!id)return {status:'BRIDGE_UNAVAILABLE'};
-  const timeout=options.timeout||4000,started=Date.now();
-  let all=[];
-  while(Date.now()-started<timeout){
+  options = options || {};
+  const command = {
+    action: action,
+    target: target || "",
+    frame: options.frame || "all"
+  };
+  if (options.referenceCode)
+    command.referenceCode = String(options.referenceCode);
+  if (options.onceKey) command.onceKey = String(options.onceKey);
+  if (action === "fill")
+    command.value = String(options.value == null ? "" : options.value);
+  const id = await evalJS(
+    wv,
+    "window.__ptAutoDispatch(" + JSON.stringify(command) + ")"
+  );
+  if (!id) return { status: "BRIDGE_UNAVAILABLE" };
+  const timeout = options.timeout || 4000,
+    started = Date.now();
+  let all = [];
+  while (Date.now() - started < timeout) {
     await delay(200);
-    const raw=await evalJS(wv,'JSON.stringify((window.__ptAutoResults||[]).filter(x=>x.id==='+JSON.stringify(String(id))+'))');
-    try{all=JSON.parse(String(raw||'[]'));}catch(_){}
-    const good=all.find(x=>x.status==='OK'||x.status==='AMBIGUOUS'||x.status==='SENSITIVE_MANUAL'||x.status==='REFERENCE_MISMATCH'||x.status==='ALREADY_DISPATCHED');
-    if(good)return good;
+    const raw = await evalJS(
+      wv,
+      "JSON.stringify((window.__ptAutoResults||[]).filter(x=>x.id===" +
+        JSON.stringify(String(id)) +
+        "))"
+    );
+    try {
+      all = JSON.parse(String(raw || "[]"));
+    } catch (_) {}
+    const good = all.find(
+      x =>
+        x.status === "OK" ||
+        x.status === "AMBIGUOUS" ||
+        x.status === "SENSITIVE_MANUAL" ||
+        x.status === "REFERENCE_MISMATCH" ||
+        x.status === "ALREADY_DISPATCHED"
+    );
+    if (good) return good;
   }
-  return all.find(x=>x.status==='FOUND')||{status:'NOT_FOUND',results:all.length};
+  return (
+    all.find(x => x.status === "FOUND") || {
+      status: "NOT_FOUND",
+      results: all.length
+    }
+  );
 }
-async function autoScan(wv,options){return autoCommand(wv,'scan','',options);}
-async function autoClick(wv,target,options){return autoCommand(wv,'click',target,options);}
-async function autoSelect(wv,target,options){return autoCommand(wv,'select',target,options);}
-async function autoFill(wv,target,value,options){return autoCommand(wv,'fill',target,Object.assign({},options||{},{value:value}));}
-async function autoWait(wv,target,options){
-  options=options||{};const until=Date.now()+(options.timeout||15000);
-  while(Date.now()<until){
-    const result=await autoCommand(wv,'find',target,Object.assign({},options,{timeout:800}));
-    if(result.status==='OK'||result.status==='FOUND')return result;
+async function autoScan(wv, options) {
+  return autoCommand(wv, "scan", "", options);
+}
+async function autoClick(wv, target, options) {
+  return autoCommand(wv, "click", target, options);
+}
+async function autoSelect(wv, target, options) {
+  return autoCommand(wv, "select", target, options);
+}
+async function autoFill(wv, target, value, options) {
+  return autoCommand(
+    wv,
+    "fill",
+    target,
+    Object.assign({}, options || {}, { value: value })
+  );
+}
+async function autoWait(wv, target, options) {
+  options = options || {};
+  const until = Date.now() + (options.timeout || 15000);
+  while (Date.now() < until) {
+    const result = await autoCommand(
+      wv,
+      "find",
+      target,
+      Object.assign({}, options, { timeout: 800 })
+    );
+    if (result.status === "OK" || result.status === "FOUND") return result;
     await delay(400);
-  }return {status:'TIMEOUT'};
+  }
+  return { status: "TIMEOUT" };
 }
 
 module.exports = {
-  autoScan, autoClick, autoSelect, autoFill, autoWait,
+  autoScan,
+  autoClick,
+  autoSelect,
+  autoFill,
+  autoWait,
   delay,
   get,
   create,

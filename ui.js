@@ -209,7 +209,8 @@ function blurAllInputs() {
 function modeTitle(mode) {
   if (mode === "BandaiNamco_Create") return "🆔 BandaiNamco / Create Account";
   if (mode === "BandaiNamco_Lottery") return "🆔 BandaiNamco / Lottery";
-  if (mode === "BandaiPremium_Create") return "🎟 BandaiPremium / Create Account";
+  if (mode === "BandaiPremium_Create")
+    return "🎟 BandaiPremium / Create Account";
   if (mode === "BandaiPremium_Lottery") return "🎟 BandaiPremium / Lottery";
   if (mode === "Lottery") return "🎯 Lottery";
   if (mode === "Buy") return "🛒 Buy";
@@ -642,7 +643,11 @@ function renderCurrentTab() {
 
       pageView = dashboardPage();
 
-      height = state.mode === "BandaiPremium_Create" && String((state.form || {}).premiumSmsEnabled) === "1" ? 1200 : 730;
+      height =
+        state.mode === "BandaiPremium_Create" &&
+        String((state.form || {}).premiumSmsEnabled) === "1"
+          ? 1200
+          : 730;
       break;
 
     case "Data":
@@ -675,7 +680,8 @@ function renderCurrentTab() {
 // ============================================================
 
 function dashboardPage() {
-  const expanded = Core.getState().mode === "BandaiPremium_Create" &&
+  const expanded =
+    Core.getState().mode === "BandaiPremium_Create" &&
     String((Core.getState().form || {}).premiumSmsEnabled) === "1";
   return page(
     "dashboardPage",
@@ -693,9 +699,17 @@ function dashboardPage() {
 
       workerCard(560),
 
-      ...(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? [premiumSmsHomeFields(630)] : []),
+      ...(Core.getState().mode === "BandaiPremium_Create" &&
+      String((Core.getState().form || {}).premiumSmsEnabled) === "1"
+        ? [premiumSmsHomeFields(630)]
+        : []),
 
-      runCard(Core.getState().mode === "BandaiPremium_Create" && String((Core.getState().form || {}).premiumSmsEnabled) === "1" ? 985 : 638)
+      runCard(
+        Core.getState().mode === "BandaiPremium_Create" &&
+          String((Core.getState().form || {}).premiumSmsEnabled) === "1"
+          ? 985
+          : 638
+      )
     ]
   );
 }
@@ -1331,70 +1345,116 @@ function workerCard(top) {
       {
         type: "label",
         props: {
-          text: Core.getState().mode === "BandaiPremium_Create" ? "SMS API" : "1 - 10",
+          text:
+            Core.getState().mode === "BandaiPremium_Create"
+              ? "SMS API"
+              : "1 - 10",
           align: $align.right,
           textColor: $color(UI.MUTED),
           font: $font("bold", 11)
         },
         layout: make => {
-          make.right.inset(Core.getState().mode === "BandaiPremium_Create" ? 62 : 14);
+          make.right.inset(
+            Core.getState().mode === "BandaiPremium_Create" ? 62 : 14
+          );
           make.centerY.equalTo();
-          make.width.equalTo(Core.getState().mode === "BandaiPremium_Create" ? 64 : 70);
+          make.width.equalTo(
+            Core.getState().mode === "BandaiPremium_Create" ? 64 : 70
+          );
           make.height.equalTo(30);
         }
       },
-      ...(Core.getState().mode === "BandaiPremium_Create" ? [{
-        type: "switch",
-        props: {
-          id: "premiumSmsToggle",
-          on: String((Core.getState().form || {}).premiumSmsEnabled) === "1",
-          onColor: $color(UI.RUN)
-        },
-        layout: make => {
-          make.right.inset(10);
-          make.centerY.equalTo();
-        },
-        events: {
-          changed(sender) {
-            // Save any visible inputs before replacing Dashboard.
-            syncFormToCore();
-            Core.updateForm("premiumSmsEnabled", sender.on ? "1" : "0");
-            lastTab = null;
-            renderCurrentTab();
-          }
-        }
-      }] : [])
+      ...(Core.getState().mode === "BandaiPremium_Create"
+        ? [
+            {
+              type: "switch",
+              props: {
+                id: "premiumSmsToggle",
+                on:
+                  String((Core.getState().form || {}).premiumSmsEnabled) ===
+                  "1",
+                onColor: $color(UI.RUN)
+              },
+              layout: make => {
+                make.right.inset(10);
+                make.centerY.equalTo();
+              },
+              events: {
+                changed(sender) {
+                  // Save any visible inputs before replacing Dashboard.
+                  syncFormToCore();
+                  Core.updateForm("premiumSmsEnabled", sender.on ? "1" : "0");
+                  lastTab = null;
+                  renderCurrentTab();
+                }
+              }
+            }
+          ]
+        : [])
     ]
   };
 }
 
 function premiumSmsHomeFields(top) {
-  const isFuyoura = String((Core.getState().form || {}).premiumSmsProvider) === 'fuyoura';
+  const isFuyoura =
+    String((Core.getState().form || {}).premiumSmsProvider) === "fuyoura";
   return card("premiumSmsHomeFields", top, 342, [
     titleLabel("SMS API · " + (isFuyoura ? "FUYOURA" : "NORTHDINH"), 16, 12),
     {
-      type: 'button',
-      props: {title: 'Nhà cung cấp: ' + (isFuyoura ? 'Fuyoura' : 'NorthDinh') + '  ▾',
-        bgcolor:$color(UI.INPUT_BG),titleColor:$color(T.text),radius:10,font:$font(13)},
-      layout: make => { make.left.right.inset(16);make.top.equalTo(46);make.height.equalTo(38); },
-      events: {tapped() {
-        syncFormToCore();
-        $ui.menu({items:['NorthDinh','Fuyoura'],handler:(_,idx) => {
-          if (idx == null) return;
-          Core.updateForm('premiumSmsProvider',idx===1?'fuyoura':'northdinh');
-          lastTab=null;renderCurrentTab();
-        }});
-      }}
+      type: "button",
+      props: {
+        title: "Nhà cung cấp: " + (isFuyoura ? "Fuyoura" : "NorthDinh") + "  ▾",
+        bgcolor: $color(UI.INPUT_BG),
+        titleColor: $color(T.text),
+        radius: 10,
+        font: $font(13)
+      },
+      layout: make => {
+        make.left.right.inset(16);
+        make.top.equalTo(46);
+        make.height.equalTo(38);
+      },
+      events: {
+        tapped() {
+          syncFormToCore();
+          $ui.menu({
+            items: ["NorthDinh", "Fuyoura"],
+            handler: (_, idx) => {
+              if (idx == null) return;
+              Core.updateForm(
+                "premiumSmsProvider",
+                idx === 1 ? "fuyoura" : "northdinh"
+              );
+              lastTab = null;
+              renderCurrentTab();
+            }
+          });
+        }
+      }
     },
-    ...(isFuyoura ? [
-      field("fuyouraApiKey", "API KEY", "Nhập Fuyoura API key", 62, true),
-      field("fuyouraProjectId", "PROJECT ID", "Nhập ID (ví dụ 70005)", 138, false),
-      field("fuyouraCountry", "COUNTRY", "jpn", 214, false)
-    ] : [
-      field("premiumSmsApiKey", "API KEY", "Nhập NorthDinh API key", 62, true),
-      field("premiumSmsServiceId", "SERVICE ID", "8", 138, false),
-      field("premiumSmsServer", "SERVER (1 hoặc 2)", "2", 214, false)
-    ])
+    ...(isFuyoura
+      ? [
+          field("fuyouraApiKey", "API KEY", "Nhập Fuyoura API key", 62, true),
+          field(
+            "fuyouraProjectId",
+            "PROJECT ID",
+            "Nhập ID (ví dụ 70005)",
+            138,
+            false
+          ),
+          field("fuyouraCountry", "COUNTRY", "jpn", 214, false)
+        ]
+      : [
+          field(
+            "premiumSmsApiKey",
+            "API KEY",
+            "Nhập NorthDinh API key",
+            62,
+            true
+          ),
+          field("premiumSmsServiceId", "SERVICE ID", "8", 138, false),
+          field("premiumSmsServer", "SERVER (1 hoặc 2)", "2", 214, false)
+        ])
   ]);
 }
 
@@ -1619,13 +1679,21 @@ function dataPage() {
     ];
     if (threeDsOn) {
       paymentViews.push(
-        field("payment3dsImapMail", "3DS IMAP MAIL", "imap@gmail.com", 312, false),
+        field(
+          "payment3dsImapMail",
+          "3DS IMAP MAIL",
+          "imap@gmail.com",
+          312,
+          false
+        ),
         field("payment3dsImapPass", "3DS IMAP PASS", "App Password", 388, true),
         paymentToggle("payment3dsSmsEnabled", "SMS (Shortcuts)", 468)
       );
     }
     const paymentHeight = threeDsOn ? 558 : 346;
-    views.push(dataSection("sectionPayment", "Payment", top, paymentViews, paymentHeight));
+    views.push(
+      dataSection("sectionPayment", "Payment", top, paymentViews, paymentHeight)
+    );
     top += paymentHeight + 20;
   }
 
@@ -1639,7 +1707,6 @@ function dataPageHeight() {
 
   top += 416;
 
-
   if (sec.product) {
     top += 216;
   }
@@ -1649,7 +1716,10 @@ function dataPageHeight() {
   }
 
   if (sec.payment) {
-    top += String((Core.getState().form || {}).payment3dsEnabled || "0") === "1" ? 578 : 366;
+    top +=
+      String((Core.getState().form || {}).payment3dsEnabled || "0") === "1"
+        ? 578
+        : 366;
   }
 
   return top + 30;
@@ -2026,8 +2096,8 @@ function syncFormToCore() {
     const element = $(key);
 
     if (element) {
-      if (key === 'payment3dsEnabled' || key === 'payment3dsSmsEnabled') {
-        Core.updateForm(key, element.on ? '1' : '0');
+      if (key === "payment3dsEnabled" || key === "payment3dsSmsEnabled") {
+        Core.updateForm(key, element.on ? "1" : "0");
       } else {
         Core.updateForm(key, element.text || "");
       }
@@ -2446,7 +2516,9 @@ function refreshQueueResult(state) {
   setText("resultFailed", cachedQueueResult.failedText);
 
   const logs = (state.logs || [])
-    .filter(log => log.type !== 'debug' || (Core.getDebugLogs && Core.getDebugLogs()))
+    .filter(
+      log => log.type !== "debug" || (Core.getDebugLogs && Core.getDebugLogs())
+    )
     .map(log => {
       return logIcon(log.type) + " " + log.time + "  " + log.text;
     })
@@ -2559,7 +2631,8 @@ function showModeMenu() {
                       items: ["Create Account", "Lottery"],
                       handler: (title, idx) => {
                         if (idx !== 0 && idx !== 1) return;
-                        const selectedMode = mode + (idx === 0 ? "_Create" : "_Lottery");
+                        const selectedMode =
+                          mode + (idx === 0 ? "_Create" : "_Lottery");
                         Core.setMode(selectedMode);
                         queueDirty = true;
                         resultDirty = true;
@@ -3037,9 +3110,15 @@ function importAllColumns(clearProgress) {
 
     // Preserve empty card rows to keep the mapping aligned with mailList.
     lists.creditOwnerList.push(row.creditOwner || "");
-    lists.creditList.push(row.creditNumber
-      ? row.creditNumber + "-" + (row.creditExpire || "") + "-" + (row.creditCsv || "")
-      : "");
+    lists.creditList.push(
+      row.creditNumber
+        ? row.creditNumber +
+            "-" +
+            (row.creditExpire || "") +
+            "-" +
+            (row.creditCsv || "")
+        : ""
+    );
 
     if (!buyQty && row.buyQty) {
       buyQty = row.buyQty;
@@ -3186,7 +3265,10 @@ function getModeSections(mode) {
       mode === "BuyJumpPlus" ||
       mode === "ChangeProfileOrder",
 
-    payment: mode === "Buy" || mode === "BuyJumpPlus" || mode === "BandaiPremium_Lottery"
+    payment:
+      mode === "Buy" ||
+      mode === "BuyJumpPlus" ||
+      mode === "BandaiPremium_Lottery"
   };
 }
 
@@ -3464,9 +3546,9 @@ function markDataDirty() {
 // Non-modal manual checkpoint: the WebView remains scrollable and interactive.
 function waitForLotteryPaymentOK(stopCheck) {
   return new Promise((resolve, reject) => {
-    const root = $('root');
-    if (!root) return reject(new Error('LOTTERY_MANUAL_OK_ROOT_NOT_FOUND'));
-    const id = 'lotteryPaymentManualOK';
+    const root = $("root");
+    if (!root) return reject(new Error("LOTTERY_MANUAL_OK_ROOT_NOT_FOUND"));
+    const id = "lotteryPaymentManualOK";
     const old = $(id);
     if (old) old.remove();
     let finished = false;
@@ -3477,14 +3559,14 @@ function waitForLotteryPaymentOK(stopCheck) {
       if (view) view.remove();
     };
     root.add({
-      type: 'button',
+      type: "button",
       props: {
         id,
-        title: 'OK – Tiếp tục',
-        bgcolor: $color('#10B981'),
-        titleColor: $color('#FFFFFF'),
+        title: "OK – Tiếp tục",
+        bgcolor: $color("#10B981"),
+        titleColor: $color("#FFFFFF"),
         cornerRadius: 10,
-        font: $font('bold', 16)
+        font: $font("bold", 16)
       },
       layout: make => {
         make.left.inset(16);
@@ -3495,8 +3577,14 @@ function waitForLotteryPaymentOK(stopCheck) {
       events: {
         tapped: () => {
           if (finished) return;
-          try { if (stopCheck) stopCheck(); }
-          catch (e) { finished = true; cleanup(); reject(e); return; }
+          try {
+            if (stopCheck) stopCheck();
+          } catch (e) {
+            finished = true;
+            cleanup();
+            reject(e);
+            return;
+          }
           finished = true;
           cleanup();
           resolve();
@@ -3506,8 +3594,13 @@ function waitForLotteryPaymentOK(stopCheck) {
     // Respect STOP while waiting for manual confirmation.
     ticker = setInterval(() => {
       if (finished || !stopCheck) return;
-      try { stopCheck(); }
-      catch (e) { finished = true; cleanup(); reject(e); }
+      try {
+        stopCheck();
+      } catch (e) {
+        finished = true;
+        cleanup();
+        reject(e);
+      }
     }, 500);
   });
 }

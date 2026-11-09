@@ -101,10 +101,22 @@ let state = {
 };
 
 const MODE_FIELDS = {
-  "BandaiNamco_Create": ["mailList", "birthdate"],
-  "BandaiNamco_Lottery": ["mailList", "productIds"],
-  "BandaiPremium_Create": ["mailList", "names", "kanas", "phones", "postcode", "address2"],
-  "BandaiPremium_Lottery": ["mailList", "productIds", "creditOwnerList", "creditList"],
+  BandaiNamco_Create: ["mailList", "birthdate"],
+  BandaiNamco_Lottery: ["mailList", "productIds"],
+  BandaiPremium_Create: [
+    "mailList",
+    "names",
+    "kanas",
+    "phones",
+    "postcode",
+    "address2"
+  ],
+  BandaiPremium_Lottery: [
+    "mailList",
+    "productIds",
+    "creditOwnerList",
+    "creditList"
+  ],
   Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [
@@ -243,20 +255,35 @@ function getAppVersion() {
 // Unified log levels. Enable detailed diagnostics with Core.setDebugLogs(true).
 let debugLogsEnabled = false;
 const logCache = Object.create(null);
-function setDebugLogs(enabled) { debugLogsEnabled = !!enabled; emit(); }
-function getDebugLogs() { return debugLogsEnabled; }
-function debugLog(text) { return addLog(text, 'debug'); }
+function setDebugLogs(enabled) {
+  debugLogsEnabled = !!enabled;
+  emit();
+}
+function getDebugLogs() {
+  return debugLogsEnabled;
+}
+function debugLog(text) {
+  return addLog(text, "debug");
+}
 function compactLogText(value) {
-  return String(value == null ? '' : value).replace(/\s*\n\s*/g, ' ').trim();
+  return String(value == null ? "" : value)
+    .replace(/\s*\n\s*/g, " ")
+    .trim();
 }
 function addLog(text, type) {
-  type = String(type || 'info').toLowerCase();
-  if (type === 'debug' && !debugLogsEnabled) return;
+  type = String(type || "info").toLowerCase();
+  if (type === "debug" && !debugLogsEnabled) return;
   const message = compactLogText(text);
   if (!message) return;
   // Collapse repeated non-error messages from the same source within 3 seconds.
   const now = Date.now();
-  if (type !== 'error' && type !== 'warn' && logCache[message] && now - logCache[message] < 3000) return;
+  if (
+    type !== "error" &&
+    type !== "warn" &&
+    logCache[message] &&
+    now - logCache[message] < 3000
+  )
+    return;
   logCache[message] = now;
   const d = new Date();
 
@@ -533,11 +560,17 @@ function buildTasksFromForm(form, mode, accounts) {
     };
 
     fields.forEach(k => {
-      if (mode === "BandaiPremium_Lottery" && (k === "creditList" || k === "creditOwnerList")) {
+      if (
+        mode === "BandaiPremium_Lottery" &&
+        (k === "creditList" || k === "creditOwnerList")
+      ) {
         // Card data is strictly row-aligned. One card row belongs to one account,
         // never broadcast it to every account in the batch.
         const aligned = String(form[k] || "").split(/\r?\n/);
-        task[k] = acc[k] != null && String(acc[k]).trim() ? String(acc[k]).trim() : String(aligned[i] || "").trim();
+        task[k] =
+          acc[k] != null && String(acc[k]).trim()
+            ? String(acc[k]).trim()
+            : String(aligned[i] || "").trim();
       } else {
         task[k] = acc[k] || pickLine(lineMap[k], i);
       }
