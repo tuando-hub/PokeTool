@@ -212,6 +212,7 @@ function modeTitle(mode) {
   if (mode === "BandaiPremium_Create")
     return "🎟 BandaiPremium / Create Account";
   if (mode === "BandaiPremium_Lottery") return "🎟 BandaiPremium / Lottery";
+  if (mode === "BandaiPremium_CheckResult") return "🎟 BandaiPremium / Check Result";
   if (mode === "Lottery") return "🎯 Lottery";
   if (mode === "Buy") return "🛒 Buy";
   if (mode === "BuyJumpPlus") return "🛍 Buy Jump+";
@@ -227,7 +228,7 @@ function modeTitle(mode) {
 function modeMeta(mode) {
   const map = {
     BandaiNamco: ["🆔", "BandaiNamco", "Create Account / Lottery"],
-    BandaiPremium: ["🎟", "BandaiPremium", "Create Account / Lottery"],
+    BandaiPremium: ["🎟", "BandaiPremium", "Create Account / Lottery / Check Result"],
     Lottery: ["🎯", "Lottery", "応募・抽選"],
 
     Buy: ["🛒", "Buy", "購入"],
@@ -1601,6 +1602,7 @@ function actionButton(title, color, index, count, handler) {
 
 function dataPage() {
   const sec = getModeSections(Core.getState().mode);
+  const premiumResult = Core.getState().mode === "BandaiPremium_CheckResult";
 
   const views = [sectionHeader("Data", 18), dataActions(58)];
 
@@ -1610,20 +1612,20 @@ function dataPage() {
   views.push(
     dataSection(
       "sectionAccount",
-      "Account / IMAP",
+      premiumResult ? "BandaiPremium Account" : "Account / IMAP",
       top,
-      [
+      premiumResult ? [area("mailList", "MAIL LIST", "mail:pass", 18, 170)] : [
         field("imapEmail", "IMAP EMAIL", "imap@gmail.com", 18, false),
 
         field("imapPass", "IMAP PASSWORD", "App Password", 92, true),
 
         area("mailList", "MAIL LIST", "mail:pass", 166, 170)
       ],
-      396
+      premiumResult ? 246 : 396
     )
   );
 
-  top += 416;
+  top += premiumResult ? 266 : 416;
 
   // Product
   if (sec.product) {
@@ -1632,16 +1634,16 @@ function dataPage() {
         "sectionProduct",
         "Product",
         top,
-        [
+        premiumResult ? [field("productIds", "PRODUCT IDS", "1000260752,1000261008", 12, false)] : [
           field("productIds", "PRODUCT IDS", "452132...,452...", 12, false),
 
           field("buyQty", "BUY QTY", "1", 78, false)
         ],
-        196
+        premiumResult ? 122 : 196
       )
     );
 
-    top += 216;
+    top += premiumResult ? 142 : 216;
   }
 
   // Profile Data
@@ -2628,11 +2630,13 @@ function showModeMenu() {
                 pressFeedback(sender, () => {
                   if (mode === "BandaiNamco" || mode === "BandaiPremium") {
                     $ui.menu({
-                      items: ["Create Account", "Lottery"],
+                      items: mode === "BandaiPremium"
+                        ? ["Create Account", "Lottery", "Check Result"]
+                        : ["Create Account", "Lottery"],
                       handler: (title, idx) => {
-                        if (idx !== 0 && idx !== 1) return;
+                        if (idx !== 0 && idx !== 1 && !(mode === "BandaiPremium" && idx === 2)) return;
                         const selectedMode =
-                          mode + (idx === 0 ? "_Create" : "_Lottery");
+                          mode + (idx === 0 ? "_Create" : idx === 1 ? "_Lottery" : "_CheckResult");
                         Core.setMode(selectedMode);
                         queueDirty = true;
                         resultDirty = true;
@@ -2679,7 +2683,9 @@ function copyDone() {
   const text = Array.isArray(done)
     ? done
         .map(item => {
-          return item.email || "";
+          return item.meta && item.meta.mode === "BandaiPremium_CheckResult"
+            ? (item.email || "") + "\t" + (item.meta.checkResultSummary || "")
+            : item.email || "";
         })
         .filter(Boolean)
         .join("\n")
@@ -3251,6 +3257,7 @@ function getModeSections(mode) {
     product:
       mode === "BandaiNamco_Lottery" ||
       mode === "BandaiPremium_Lottery" ||
+      mode === "BandaiPremium_CheckResult" ||
       mode === "Lottery" ||
       mode === "Buy" ||
       mode === "CheckResult" ||

@@ -14,6 +14,7 @@ const BandaiNamcoCreate = require("./modes/bandainamco_create");
 const BandaiImap = require("./services/bandai_imap_manager");
 const BandaiPremiumCreate = require("./modes/bandaipremium_create");
 const BandaiPremiumLottery = require("./modes/bandaipremium_lottery");
+const BandaiPremiumCheckResult = require("./modes/bandaipremium_checkresult");
 
 let STOP_FLAG = false;
 let START_TIME = 0;
@@ -73,7 +74,9 @@ function pushDone(acc, meta) {
     email: acc.email,
     pass: acc.pass,
     text:
-      meta && meta.paymentCode
+      meta && meta.mode === "BandaiPremium_CheckResult" && meta.checkResultSummary
+        ? `${acc.email}:${acc.pass}\t${meta.checkResultSummary}`
+        : meta && meta.paymentCode
         ? `${acc.email}:${acc.pass}\t${meta.paymentCode}`
         : `${acc.email}:${acc.pass}`,
     doneAt: Date.now(),
@@ -106,6 +109,10 @@ async function runOneAccount(acc, index, total) {
 
   const mode = Core.getState().mode;
   const form = Core.getState().form;
+
+  if (mode === "BandaiPremium_CheckResult") {
+    return await BandaiPremiumCheckResult.runAccount({acc,index,total,form,stopCheck:checkStop});
+  }
 
   if (mode === "BandaiPremium_Lottery") {
     return await BandaiPremiumLottery.runAccount({
@@ -224,8 +231,14 @@ function validateBeforeRun() {
   if (!mode) {
     errors.push("Chưa chọn Mode");
   }
-  if (!imapEmail) errors.push("Thiếu IMAP EMAIL");
-  if (!imapPass) errors.push("Thiếu IMAP PASSWORD");
+  if (mode !== "BandaiPremium_CheckResult") {
+    if (!imapEmail) errors.push("Thiếu IMAP EMAIL");
+    if (!imapPass) errors.push("Thiếu IMAP PASSWORD");
+  }
+  if (mode === "BandaiPremium_CheckResult" &&
+      (!productIds || String(productIds).split(/[,\s]+/).filter(Boolean).some(id=>!/^\d+$/.test(id)))) {
+    errors.push("PRODUCT IDS BandaiPremium phải là ID số, phân cách bằng dấu phẩy hoặc xuống dòng");
+  }
   if (!mailList) {
     errors.push("Thiếu MAIL LIST");
   }
@@ -245,6 +258,7 @@ function validateBeforeRun() {
   if (
     mode === "Lottery" ||
     mode === "BandaiPremium_Lottery" ||
+    mode === "BandaiPremium_CheckResult" ||
     mode === "Buy" ||
     mode === "BuyJumpPlus" ||
     mode === "CheckResult" ||
@@ -335,7 +349,16 @@ function validateBeforeRun() {
 async function runAccountJob(acc, index, total) {
   try {
     Core.addLog("*************************************", "info");
-    Core.addLog("[A" + index + "] Start account: " + acc.email, "info");
+    Core.addLog(
+      "[A" +
+        index +
+        "] " +
+        (Core.getState().mode === "BandaiPremium_CheckResult"
+          ? "Bắt đầu acc: "
+          : "Start account: ") +
+        acc.email,
+      "info"
+    );
 
     const result = await runOneAccount(acc, index, total);
 
@@ -408,7 +431,12 @@ async function run() {
   const maxWorkers = getMaxWorkers();
   const parallel = maxWorkers > 1;
 
-  Core.addLog("Runner started / workers=" + maxWorkers, "success");
+  Core.addLog(
+    (selectedMode === "BandaiPremium_CheckResult"
+      ? "Bắt đầu / workers="
+      : "Runner started / workers=") + maxWorkers,
+    "success"
+  );
 
   // Khi nhiều account chạy đồng thời, không reset IP giữa lúc
   // worker khác còn đang dùng network. Reset một lần sau mỗi batch.
@@ -729,6 +757,98 @@ async function run() {
       return;
     }
 
+    // BandaiPremium Check Result: native HTTP. Chạy theo lô worker và chỉ
+    // reset IP một lần sau mỗi 10 account đã xử lý xong.
+    if (selectedMode === "BandaiPremium_CheckResult") {
+      let processed = 0;
+
+      while (pending.length && !STOP_FLAG) {
+        const batch = pending.slice(0, maxWorkers);
+        const baseIndex = total - pending.length;
+
+        Core.addLog(
+          "[Check Result] Bắt đầu lô: " +
+            batch.length +
+            "/" +
+            maxWorkers +
+            " worker",
+          "info"
+        );
+
+        const outcomes = await Promise.all(
+          batch.map((acc, i) => runAccountJob(acc, baseIndex + i + 1, total))
+        );
+
+        if (STOP_FLAG) break;
+
+        for (const outcome of outcomes) {
+          if (!outcome || outcome.stopped) continue;
+
+          processed++;
+          const acc = outcome.acc;
+
+          if (
+            outcome.error ||
+            (outcome.result && outcome.result.ok === false)
+          ) {
+            const reason = outcome.error
+              ? String(outcome.error.message || outcome.error)
+              : String(outcome.result.reason || "Lỗi không xác định");
+
+            pushFailed(acc, reason, { data: acc.data });
+            Core.addLog(
+              "[Check Result] Lỗi: " + acc.email + " / " + reason,
+              "error"
+            );
+          } else {
+            pushDone(acc, outcome.result);
+            Core.addLog("[Check Result] Xong: " + acc.email, "success");
+          }
+        }
+
+        pending = pending.filter(acc => !batch.includes(acc));
+        savePending(pending);
+        Core.refreshStats();
+
+        if (STOP_FLAG) break;
+
+        if (processed >= 10) {
+          processed -= 10;
+
+          Core.updateCurrent({
+            step: "Reset IP",
+            status: "Đang reset IP"
+          });
+          Core.addLog(
+            "[Check Result] Đã xử lý 10 acc · Reset IP",
+            "warn"
+          );
+
+          Session.setDeferNetworkReset(false);
+          const resetOk = await Session.resetIP();
+
+          if (!resetOk) {
+            Core.addLog(
+              "[Check Result] Reset IP thất bại; dừng",
+              "error"
+            );
+            break;
+          }
+
+          Session.setDeferNetworkReset(parallel);
+        }
+      }
+
+      Core.updateCurrent({
+        email: "-",
+        step: STOP_FLAG ? "Đã dừng" : "Hoàn tất",
+        status: STOP_FLAG ? "Đã dừng" : "Xong",
+        elapsed: elapsedText()
+      });
+
+      return;
+    }
+
     while (pending.length > 0) {
       if (STOP_FLAG) {
         Core.addLog("Runner stopped by user", "warn");
@@ -971,7 +1091,12 @@ async function run() {
     Core.refreshStats();
 
     if (!STOP_FLAG) {
-      Core.addLog("Runner paused/finished", "info");
+      Core.addLog(
+        selectedMode === "BandaiPremium_CheckResult"
+          ? "Đã tạm dừng/hoàn tất"
+          : "Runner paused/finished",
+        "info"
+      );
     }
   }
 }
@@ -996,6 +1121,7 @@ async function nextAccount() {
 
 function stop() {
   STOP_FLAG = true;
+  BandaiPremiumCheckResult.cancelAll();
   BandaiPremiumCreate.cancelOtpWatchers();
   Core.setRunning(false);
   Core.addLog("Stop requested", "warn");

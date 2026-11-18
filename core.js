@@ -117,6 +117,7 @@ const MODE_FIELDS = {
     "creditOwnerList",
     "creditList"
   ],
+  BandaiPremium_CheckResult: ["productIds"],
   Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [
