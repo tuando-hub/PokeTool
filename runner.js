@@ -787,22 +787,38 @@ async function run() {
           processed++;
           const acc = outcome.acc;
 
-          if (
-            outcome.error ||
-            (outcome.result && outcome.result.ok === false)
-          ) {
+          const result = outcome.result;
+
+          if (outcome.error || !result || result.ok === false) {
             const reason = outcome.error
               ? String(outcome.error.message || outcome.error)
-              : String(outcome.result.reason || "Lỗi không xác định");
+              : String((result && result.reason) || "Lỗi không xác định");
 
             pushFailed(acc, reason, { data: acc.data });
             Core.addLog(
               "[Check Result] Lỗi: " + acc.email + " / " + reason,
               "error"
             );
-          } else {
-            pushDone(acc, outcome.result);
+          } else if (!result.outcome || result.outcome === "done") {
+            pushDone(acc, result);
             Core.addLog("[Check Result] Xong: " + acc.email, "success");
+          } else if (result.outcome === "skip") {
+            Core.addLog(
+              "[Check Result] Trượt (không lưu): " + acc.email,
+              "info"
+            );
+          } else {
+            const reason = String(result.reason || "Không trúng");
+
+            pushFailed(acc, reason, {
+              data: acc.data,
+              results: result.results,
+              checkResultSummary: result.checkResultSummary
+            });
+            Core.addLog(
+              "[Check Result] Không trúng: " + acc.email,
+              "warn"
+            );
           }
         }
 

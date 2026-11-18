@@ -1,9 +1,10 @@
 {
-  "version": "2.0.34",
+  "version": "2.0.35",
   "changelog": {
     "items": [
       "BandaiPremium Check Result: đăng nhập native Bandai Namco ID, tự bỏ qua passkey, đọc lottery history và check PRODUCT IDS",
-      "Log và kết quả tiếng Việt, gọn hơn; tự reset IP sau mỗi 10 account"
+      "Log và kết quả tiếng Việt, gọn hơn; tự reset IP sau mỗi 10 account",
+      "Chỉ TRÚNG vào Done; TRƯỢT không lưu; các kết quả còn lại vào Failed"
     ]
   }
 }

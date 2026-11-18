@@ -40,6 +40,23 @@ function statusText(status) {
   return STATUS_VN[status] || status || 'KHÔNG RÕ';
 }
 
+function resultVerdict(results) {
+  const statuses = [];
+
+  for (const item of results || []) {
+    if (item && item.status) statuses.push(item.status);
+
+    for (const entry of (item && item.entries) || []) {
+      if (entry && entry.status) statuses.push(entry.status);
+    }
+  }
+
+  if (statuses.indexOf('WON') >= 0) return 'done';
+  if (statuses.length && statuses.every(status => status === 'LOST')) return 'skip';
+
+  return 'failed';
+}
+
 function errorText(error) {
   const code = String((error && error.message) || error || '');
 
@@ -72,7 +89,6 @@ async function runAccount({ acc, index, total, form, stopCheck }) {
       step: 'Check Result · ' + label,
       status: 'Running'
     });
-    Core.addLog('[Check Result A' + index + '] ' + label, 'info');
   };
 
   try {
@@ -94,12 +110,20 @@ async function runAccount({ acc, index, total, form, stopCheck }) {
       .map(item => item.productId + ':' + item.statusLabel)
       .join('; ');
 
-    Core.addLog('[Check Result A' + index + '] ' + checkResultSummary, 'success');
+    const outcome = resultVerdict(results);
+    const reason = outcome === 'failed' ? 'Không trúng' : '';
+
+    Core.addLog(
+      '[Check Result A' + index + '] ' + checkResultSummary,
+      outcome === 'done' ? 'success' : outcome === 'failed' ? 'warn' : 'info'
+    );
 
     return {
       ok: true,
       mode: 'BandaiPremium_CheckResult',
       verified: true,
+      outcome,
+      reason,
       results,
       checkResultSummary
     };
@@ -111,4 +135,4 @@ async function runAccount({ acc, index, total, form, stopCheck }) {
   }
 }
 
-module.exports = { runAccount, cancelAll: Result.cancelAll };
+module.exports = { runAccount, cancelAll: Result.cancelAll, resultVerdict };
