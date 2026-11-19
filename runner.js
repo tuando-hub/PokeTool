@@ -15,6 +15,7 @@ const BandaiImap = require("./services/bandai_imap_manager");
 const BandaiPremiumCreate = require("./modes/bandaipremium_create");
 const BandaiPremiumLottery = require("./modes/bandaipremium_lottery");
 const BandaiPremiumCheckResult = require("./modes/bandaipremium_checkresult");
+const BandaiPremiumChangeAddressOrder = require("./modes/changeaddressorder");
 
 let STOP_FLAG = false;
 let START_TIME = 0;
@@ -76,6 +77,10 @@ function pushDone(acc, meta) {
     text:
       meta && meta.mode === "BandaiPremium_CheckResult" && meta.checkResultSummary
         ? `${acc.email}:${acc.pass}\t${meta.checkResultSummary}`
+        : meta &&
+          meta.mode === "BandaiPremium_ChangeAddressOrder" &&
+          meta.addrSummary
+        ? `${acc.email}:${acc.pass}\t${meta.addrSummary}`
         : meta && meta.paymentCode
         ? `${acc.email}:${acc.pass}\t${meta.paymentCode}`
         : `${acc.email}:${acc.pass}`,
@@ -112,6 +117,16 @@ async function runOneAccount(acc, index, total) {
 
   if (mode === "BandaiPremium_CheckResult") {
     return await BandaiPremiumCheckResult.runAccount({acc,index,total,form,stopCheck:checkStop});
+  }
+
+  if (mode === "BandaiPremium_ChangeAddressOrder") {
+    return await BandaiPremiumChangeAddressOrder.runAccount({
+      acc,
+      index,
+      total,
+      form,
+      stopCheck: checkStop
+    });
   }
 
   if (mode === "BandaiPremium_Lottery") {
@@ -231,13 +246,25 @@ function validateBeforeRun() {
   if (!mode) {
     errors.push("Chưa chọn Mode");
   }
-  if (mode !== "BandaiPremium_CheckResult") {
+  if (
+    mode !== "BandaiPremium_CheckResult" &&
+    mode !== "BandaiPremium_ChangeAddressOrder"
+  ) {
     if (!imapEmail) errors.push("Thiếu IMAP EMAIL");
     if (!imapPass) errors.push("Thiếu IMAP PASSWORD");
   }
-  if (mode === "BandaiPremium_CheckResult" &&
-      (!productIds || String(productIds).split(/[,\s]+/).filter(Boolean).some(id=>!/^\d+$/.test(id)))) {
-    errors.push("PRODUCT IDS BandaiPremium phải là ID số, phân cách bằng dấu phẩy hoặc xuống dòng");
+  if (
+    (mode === "BandaiPremium_CheckResult" ||
+      mode === "BandaiPremium_ChangeAddressOrder") &&
+    (!productIds ||
+      String(productIds)
+        .split(/[,\s]+/)
+        .filter(Boolean)
+        .some(id => !/^\d+$/.test(id)))
+  ) {
+    errors.push(
+      "PRODUCT IDS BandaiPremium phải là ID số, phân cách bằng dấu phẩy hoặc xuống dòng"
+    );
   }
   if (!mailList) {
     errors.push("Thiếu MAIL LIST");
@@ -259,6 +286,7 @@ function validateBeforeRun() {
     mode === "Lottery" ||
     mode === "BandaiPremium_Lottery" ||
     mode === "BandaiPremium_CheckResult" ||
+    mode === "BandaiPremium_ChangeAddressOrder" ||
     mode === "Buy" ||
     mode === "BuyJumpPlus" ||
     mode === "CheckResult" ||
@@ -353,7 +381,8 @@ async function runAccountJob(acc, index, total) {
       "[A" +
         index +
         "] " +
-        (Core.getState().mode === "BandaiPremium_CheckResult"
+        (Core.getState().mode === "BandaiPremium_CheckResult" ||
+        Core.getState().mode === "BandaiPremium_ChangeAddressOrder"
           ? "Bắt đầu acc: "
           : "Start account: ") +
         acc.email,
@@ -432,7 +461,8 @@ async function run() {
   const parallel = maxWorkers > 1;
 
   Core.addLog(
-    (selectedMode === "BandaiPremium_CheckResult"
+    (selectedMode === "BandaiPremium_CheckResult" ||
+    selectedMode === "BandaiPremium_ChangeAddressOrder"
       ? "Bắt đầu / workers="
       : "Runner started / workers=") + maxWorkers,
     "success"
@@ -1108,7 +1138,8 @@ async function run() {
 
     if (!STOP_FLAG) {
       Core.addLog(
-        selectedMode === "BandaiPremium_CheckResult"
+        selectedMode === "BandaiPremium_CheckResult" ||
+        selectedMode === "BandaiPremium_ChangeAddressOrder"
           ? "Đã tạm dừng/hoàn tất"
           : "Runner paused/finished",
         "info"
@@ -1138,6 +1169,7 @@ async function nextAccount() {
 function stop() {
   STOP_FLAG = true;
   BandaiPremiumCheckResult.cancelAll();
+  BandaiPremiumChangeAddressOrder.cancelAll();
   BandaiPremiumCreate.cancelOtpWatchers();
   Core.setRunning(false);
   Core.addLog("Stop requested", "warn");

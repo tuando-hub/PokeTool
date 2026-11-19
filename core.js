@@ -118,6 +118,16 @@ const MODE_FIELDS = {
     "creditList"
   ],
   BandaiPremium_CheckResult: ["productIds"],
+  BandaiPremium_ChangeAddressOrder: [
+    "productIds",
+    "names",
+    "kanas",
+    "phones",
+    "postcode",
+    "pref",
+    "address1",
+    "address2"
+  ],
   Lottery: ["imapEmail", "imapPass", "productIds"],
 
   Buy: [

@@ -213,6 +213,8 @@ function modeTitle(mode) {
     return "🎟 BandaiPremium / Create Account";
   if (mode === "BandaiPremium_Lottery") return "🎟 BandaiPremium / Lottery";
   if (mode === "BandaiPremium_CheckResult") return "🎟 BandaiPremium / Check Result";
+  if (mode === "BandaiPremium_ChangeAddressOrder")
+    return "📦 BandaiPremium / Change Address";
   if (mode === "Lottery") return "🎯 Lottery";
   if (mode === "Buy") return "🛒 Buy";
   if (mode === "BuyJumpPlus") return "🛍 Buy Jump+";
@@ -228,7 +230,7 @@ function modeTitle(mode) {
 function modeMeta(mode) {
   const map = {
     BandaiNamco: ["🆔", "BandaiNamco", "Create Account / Lottery"],
-    BandaiPremium: ["🎟", "BandaiPremium", "Create Account / Lottery / Check Result"],
+    BandaiPremium: ["🎟", "BandaiPremium", "Create / Lottery / Check Result / Change Address"],
     Lottery: ["🎯", "Lottery", "応募・抽選"],
 
     Buy: ["🛒", "Buy", "購入"],
@@ -2631,12 +2633,19 @@ function showModeMenu() {
                   if (mode === "BandaiNamco" || mode === "BandaiPremium") {
                     $ui.menu({
                       items: mode === "BandaiPremium"
-                        ? ["Create Account", "Lottery", "Check Result"]
+                        ? ["Create Account", "Lottery", "Check Result", "Change Address Order"]
                         : ["Create Account", "Lottery"],
                       handler: (title, idx) => {
-                        if (idx !== 0 && idx !== 1 && !(mode === "BandaiPremium" && idx === 2)) return;
+                        if (idx !== 0 && idx !== 1 && !(mode === "BandaiPremium" && (idx === 2 || idx === 3))) return;
                         const selectedMode =
-                          mode + (idx === 0 ? "_Create" : idx === 1 ? "_Lottery" : "_CheckResult");
+                          mode +
+                          (idx === 0
+                            ? "_Create"
+                            : idx === 1
+                            ? "_Lottery"
+                            : idx === 2
+                            ? "_CheckResult"
+                            : "_ChangeAddressOrder");
                         Core.setMode(selectedMode);
                         queueDirty = true;
                         resultDirty = true;
@@ -3262,7 +3271,8 @@ function getModeSections(mode) {
       mode === "Buy" ||
       mode === "CheckResult" ||
       mode === "BuyJumpPlus" ||
-      mode === "ChangeProfileOrder",
+      mode === "ChangeProfileOrder" ||
+      mode === "BandaiPremium_ChangeAddressOrder",
 
     profile:
       mode === "BandaiNamco_Create" ||
@@ -3270,7 +3280,8 @@ function getModeSections(mode) {
       mode === "Create" ||
       mode === "ChangeProfile" ||
       mode === "BuyJumpPlus" ||
-      mode === "ChangeProfileOrder",
+      mode === "ChangeProfileOrder" ||
+      mode === "BandaiPremium_ChangeAddressOrder",
 
     payment:
       mode === "Buy" ||

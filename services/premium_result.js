@@ -185,7 +185,7 @@ function createClient(options){
    return {productId,status:!entries.length?unresolved?'UNKNOWN':'NOT_FOUND':statuses.length===1?statuses[0]:'MIXED',reason:unresolved?'HISTORY_HAS_UNLINKED_PRODUCTS':'',entries};
   });
  }
- const client={login,readResults,close};ACTIVE.add(client);return client;
+ const client={login,readResults,close,http};ACTIVE.add(client);return client;
 }
 function cancelAll(){for(const client of Array.from(ACTIVE))client.close();}
 module.exports={...Parser,createClient,cancelAll,setLogger};

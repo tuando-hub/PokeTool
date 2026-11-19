@@ -88,6 +88,12 @@ function create(){
    try{
     const req=$objc('NSMutableURLRequest').invoke('requestWithURL:',nsurl(url));
     req.invoke('setHTTPMethod:',opt.method||'GET');req.invoke('setHTTPShouldHandleCookies:',true);req.invoke('setMainDocumentURL:',nsurl('https://p-bandai.jp/'));
+    if((opt.method||'GET')==='GET'){
+     // Order pages change after POST; never read a cached copy when verifying.
+     try{req.invoke('setCachePolicy:',1);}catch(_){}
+     req.invoke('setValue:forHTTPHeaderField:','no-cache','Cache-Control');
+     req.invoke('setValue:forHTTPHeaderField:','no-cache','Pragma');
+    }
     req.invoke('setValue:forHTTPHeaderField:','Mozilla/5.0 (iPhone; CPU iPhone OS 16_7_16 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6.2 Mobile/15E148 Safari/604.1','User-Agent');
     req.invoke('setValue:forHTTPHeaderField:','ja-JP,ja;q=0.9','Accept-Language');
     for(const name of Object.keys(opt.headers||{}))req.invoke('setValue:forHTTPHeaderField:',String(opt.headers[name]),name);
