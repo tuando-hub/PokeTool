@@ -1,5 +1,5 @@
 {
-  "version": "2.0.36",
+  "version": "2.0.37",
   "changelog": {
     "items": [
       "BandaiPremium Check Result: đăng nhập native Bandai Namco ID, tự bỏ qua passkey, đọc lottery history và check PRODUCT IDS",
@@ -9,7 +9,8 @@
       "Change Address Order: bỏ qua text placeholder 選択してください trong <select> khi dò lỗi site, không còn báo lỗi giả",
       "Change Address Order: log chẩn đoán (hiện trạng đơn, phản hồi site, từng trường khớp/lệch), không đọc cache khi kiểm tra lại",
       "Change Address Order: xác nhận đúng form /myorder_d_chg/ (nút allset), so sánh địa chỉ chuẩn hóa full-width sau khi đổi",
-      "Change Address Order: p-bandai chỉ nhận 姓/名 tiếng Nhật; mode báo lỗi rõ khi tên có chữ Latin (site trả e=1) để sửa UI"
+      "Change Address Order: p-bandai chỉ nhận 姓/名 tiếng Nhật; mode báo lỗi rõ khi tên có chữ Latin (site trả e=1) để sửa UI",
+      "Change Address Order: tự reset IP sau mỗi 10 acc đã xử lý (sau khi lô worker chạy xong)"
     ]
   }
 }

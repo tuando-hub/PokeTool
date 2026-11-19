@@ -459,6 +459,7 @@ async function run() {
 
   const maxWorkers = getMaxWorkers();
   const parallel = maxWorkers > 1;
+  let changeAddressProcessed = 0;
 
   Core.addLog(
     (selectedMode === "BandaiPremium_CheckResult" ||
@@ -1070,6 +1071,43 @@ async function run() {
       }
 
       Core.refreshStats();
+
+      // Change Address Order: reset IP every 10 processed accounts. Run it
+      // only after the whole worker batch finished, so no worker is mid-request.
+      if (
+        selectedMode === "BandaiPremium_ChangeAddressOrder" &&
+        !STOP_FLAG
+      ) {
+        changeAddressProcessed += outcomes.filter(
+          outcome => outcome && !outcome.stopped
+        ).length;
+
+        if (changeAddressProcessed >= 10) {
+          changeAddressProcessed -= 10;
+
+          Core.updateCurrent({
+            step: "Reset IP",
+            status: "Đang reset IP"
+          });
+          Core.addLog(
+            "[Change Address] Đã xử lý 10 acc · Reset IP",
+            "warn"
+          );
+
+          Session.setDeferNetworkReset(false);
+          const resetOk = await Session.resetIP();
+
+          if (!resetOk) {
+            Core.addLog(
+              "[Change Address] Reset IP thất bại; dừng",
+              "error"
+            );
+            break;
+          }
+
+          Session.setDeferNetworkReset(parallel);
+        }
+      }
 
       if (pauseForSms) {
         Core.addLog(
